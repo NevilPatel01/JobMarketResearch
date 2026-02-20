@@ -421,8 +421,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-**Project Maintainer**: Axis Patel  
-**Email**: contact@example.com  
+**Project Maintainer**: Nevil Patel  
 **GitHub**: [@NevilPatel01](https://github.com/NevilPatel01)  
 **Project Link**: [https://github.com/NevilPatel01/JobMarketResearch](https://github.com/NevilPatel01/JobMarketResearch)
 
