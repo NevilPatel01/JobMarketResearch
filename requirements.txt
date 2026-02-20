@@ -1,0 +1,142 @@
+# ==============================================================================
+# CANADA TECH JOB COMPASS - PYTHON DEPENDENCIES
+# ==============================================================================
+# Install with: pip install -r requirements.txt
+
+# ==============================================================================
+# Core Dependencies
+# ==============================================================================
+python-dotenv==1.0.0          # Environment variable management
+click==8.1.7                  # CLI interface
+
+# ==============================================================================
+# Web Scraping
+# ==============================================================================
+requests==2.31.0              # HTTP requests
+beautifulsoup4==4.12.2        # HTML parsing
+lxml==5.1.0                   # XML/HTML parser (faster than html.parser)
+selenium==4.15.2              # Browser automation
+webdriver-manager==4.0.1      # Auto-download Chrome/Firefox drivers
+
+# RSS feed parsing
+feedparser==6.0.10            # RSS/Atom feed parser
+
+# ==============================================================================
+# Data Processing
+# ==============================================================================
+pandas==2.1.4                 # Data manipulation
+numpy==1.26.2                 # Numerical computing
+openpyxl==3.1.2               # Excel file support
+
+# ==============================================================================
+# Database (PostgreSQL)
+# ==============================================================================
+psycopg2-binary==2.9.9        # PostgreSQL adapter
+SQLAlchemy==2.0.23            # ORM and database toolkit
+alembic==1.13.1               # Database migrations
+
+# ==============================================================================
+# Natural Language Processing
+# ==============================================================================
+spacy==3.7.2                  # NLP library
+# Download model after install: python -m spacy download en_core_web_sm
+
+# ==============================================================================
+# Machine Learning (Optional - for predictions)
+# ==============================================================================
+scikit-learn==1.3.2           # ML algorithms
+xgboost==2.0.3                # Gradient boosting (salary prediction)
+joblib==1.3.2                 # Model persistence
+
+# ==============================================================================
+# Retry & Error Handling
+# ==============================================================================
+tenacity==8.2.3               # Retry logic with exponential backoff
+ratelimit==2.2.1              # Rate limiting decorator
+
+# ==============================================================================
+# Scheduling
+# ==============================================================================
+APScheduler==3.10.4           # Job scheduling (cron-like)
+
+# ==============================================================================
+# Logging & Monitoring
+# ==============================================================================
+python-json-logger==2.0.7     # JSON formatted logs
+colorlog==6.8.0               # Colored console logs
+
+# ==============================================================================
+# Testing
+# ==============================================================================
+pytest==7.4.3                 # Testing framework
+pytest-cov==4.1.0             # Coverage reporting
+pytest-mock==3.12.0           # Mocking for tests
+responses==0.24.1             # Mock HTTP requests
+freezegun==1.4.0              # Mock datetime for tests
+
+# ==============================================================================
+# Code Quality
+# ==============================================================================
+black==23.12.1                # Code formatter
+isort==5.13.2                 # Import sorting
+flake8==7.0.0                 # Linting
+mypy==1.7.1                   # Type checking
+pylint==3.0.3                 # Code analysis
+
+# ==============================================================================
+# Data Validation
+# ==============================================================================
+pydantic==2.5.3               # Data validation
+jsonschema==4.20.0            # JSON schema validation
+
+# ==============================================================================
+# Utilities
+# ==============================================================================
+python-dateutil==2.8.2        # Date parsing
+pytz==2023.3.post1            # Timezone support
+tqdm==4.66.1                  # Progress bars
+tabulate==0.9.0               # Pretty table printing
+
+# ==============================================================================
+# Power BI Integration (Optional)
+# ==============================================================================
+# For Power BI API auto-refresh (optional)
+msal==1.26.0                  # Microsoft Authentication Library
+
+# ==============================================================================
+# Development Tools
+# ==============================================================================
+ipython==8.19.0               # Enhanced Python shell
+jupyter==1.0.0                # Jupyter notebooks (for exploration)
+notebook==7.0.6               # Jupyter notebook server
+
+# ==============================================================================
+# INSTALLATION INSTRUCTIONS
+# ==============================================================================
+# 
+# 1. Create virtual environment:
+#    python -m venv venv
+#    
+# 2. Activate virtual environment:
+#    - Windows: venv\Scripts\activate
+#    - macOS/Linux: source venv/bin/activate
+#    
+# 3. Install dependencies:
+#    pip install -r requirements.txt
+#    
+# 4. Download spaCy model:
+#    python -m spacy download en_core_web_sm
+#    
+# 5. Install Chrome/Chromium for Selenium:
+#    - macOS: brew install --cask chromium
+#    - Ubuntu: apt-get install chromium-browser
+#    - Windows: Download from https://www.google.com/chrome/
+#
+# 6. Verify installation:
+#    python -c "import requests, bs4, selenium, spacy, pandas, sqlalchemy; print('All packages imported successfully!')"
+#
+# ==============================================================================
+# OPTIONAL: Upgrade all packages
+# ==============================================================================
+# pip list --outdated
+# pip install --upgrade -r requirements.txt
