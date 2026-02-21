@@ -5,6 +5,7 @@ Main CLI for Canada Tech Job Compass.
 Commands:
     collect     - Collect jobs from all sources
     process     - Process raw jobs (validate, deduplicate, extract features)
+    analyze     - Run analysis and print key insights (salary, skills, experience ladder)
     full        - Run full pipeline (collect + process)
     stats       - Show database statistics
 """
@@ -163,11 +164,6 @@ def process(limit):
     inserted = storage.insert_features(features)
     logger.info(f"✓ Inserted {inserted} feature records")
     
-    # Step 5: Refresh Power BI view
-    logger.info("\n🔄 Refreshing Power BI view...")
-    storage.refresh_powerbi_view()
-    logger.info("✓ Power BI view refreshed")
-    
     # Show stats
     counts = storage.get_table_counts()
     logger.info(f"\nDatabase stats:")
@@ -207,6 +203,104 @@ def full(cities, roles, pages):
     logger.info("\n" + "="*80)
     logger.info("✅ FULL PIPELINE COMPLETE")
     logger.info("="*80)
+
+
+@cli.command()
+@click.option('--days', default=90, help='Include jobs posted in last N days (0 = all)')
+def analyze(days):
+    """Run analysis and print key insights."""
+    from sqlalchemy import text
+
+    logger.info("="*80)
+    logger.info("JOB MARKET ANALYSIS")
+    logger.info("="*80)
+
+    db = DatabaseConnection()
+    date_where = f"jr.posted_date >= CURRENT_DATE - INTERVAL '{days} days'" if days > 0 else "1=1"
+    date_where_raw = f"posted_date >= CURRENT_DATE - INTERVAL '{days} days'" if days > 0 else "1=1"
+
+    with db.get_session() as session:
+        q = f"SELECT COUNT(*) as total, COUNT(jf.job_id) as with_features FROM jobs_raw jr LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id WHERE {date_where}"
+        r = session.execute(text(q)).fetchone()
+        total, with_feat = r[0], r[1]
+
+    logger.info(f"\n📊 Overview ({'last ' + str(days) + ' days' if days > 0 else 'all time'})")
+    logger.info(f"   Total jobs: {total:,} | With features: {with_feat:,}")
+
+    with db.get_session() as session:
+        q = f"SELECT source, COUNT(*) as cnt FROM jobs_raw WHERE {date_where_raw} GROUP BY source ORDER BY cnt DESC"
+        rows = session.execute(text(q)).fetchall()
+    logger.info("\n📥 By source:")
+    for src, cnt in rows:
+        logger.info(f"   {src}: {cnt:,}")
+
+    with db.get_session() as session:
+        q = f"SELECT city, province, COUNT(*) as cnt FROM jobs_raw WHERE {date_where_raw} GROUP BY city, province ORDER BY cnt DESC LIMIT 10"
+        rows = session.execute(text(q)).fetchall()
+    logger.info("\n🏙️ Top cities:")
+    for city, prov, cnt in rows:
+        logger.info(f"   {city}, {prov or '?'}: {cnt:,}")
+
+    with db.get_session() as session:
+        q = f"SELECT jr.title, COUNT(*) as cnt FROM jobs_raw jr WHERE {date_where} GROUP BY jr.title ORDER BY cnt DESC LIMIT 15"
+        rows = session.execute(text(q)).fetchall()
+    logger.info("\n👔 Top roles:")
+    for title, cnt in rows:
+        short = (str(title)[:45] + '..') if len(str(title)) > 47 else title
+        logger.info(f"   {short}: {cnt:,}")
+
+    with db.get_session() as session:
+        q = f"SELECT ROUND(AVG(salary_mid)) as avg_sal, COUNT(*) as n FROM jobs_raw WHERE salary_mid IS NOT NULL AND salary_mid > 0 AND {date_where_raw}"
+        r = session.execute(text(q)).fetchone()
+        if r and r[1] > 0:
+            logger.info(f"\n💰 Salary (jobs with data: {r[1]:,})")
+            logger.info(f"   Avg salary: ${r[0]:,.0f}" if r[0] else "   N/A")
+
+    with db.get_session() as session:
+        q = f"""
+            SELECT ROUND(100.0 * AVG(CASE WHEN COALESCE(jf.is_remote, false) OR jr.remote_type IN ('remote','hybrid') THEN 1 ELSE 0 END), 1)
+            FROM jobs_raw jr LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id WHERE {date_where}
+        """
+        r = session.execute(text(q)).fetchone()
+        if r and r[0] is not None:
+            logger.info(f"\n🏠 Remote/flexible: {r[0]}%")
+
+    with db.get_session() as session:
+        q = f"""
+            SELECT jr.city, jr.title, ROUND(AVG((COALESCE(jf.exp_min,0)+COALESCE(jf.exp_max,jf.exp_min,0))/2.0),1) as avg_exp,
+                   ROUND(100.0*AVG(jf.is_junior::int), 1) as junior_pct,
+                   COUNT(*) as n
+            FROM jobs_raw jr JOIN jobs_features jf ON jr.job_id = jf.job_id
+            WHERE (jf.exp_min IS NOT NULL OR jf.exp_max IS NOT NULL)
+        """
+        q += f" AND {date_where}"
+        q += " GROUP BY jr.city, jr.title HAVING COUNT(*) >= 3 ORDER BY junior_pct DESC, avg_exp ASC LIMIT 10"
+        rows = session.execute(text(q)).fetchall()
+    logger.info("\n📈 Experience ladder (city + role, junior-friendliest):")
+    for city, title, avg_exp, jpct, n in rows:
+        logger.info(f"   {city} - {str(title)[:35]}: {avg_exp}y avg, {jpct}% junior | {n} jobs")
+
+    with db.get_session() as session:
+        if days > 0:
+            q = f"""
+                SELECT LOWER(TRIM(skill::text)) as sk, COUNT(*) as cnt
+                FROM jobs_raw jr JOIN jobs_features jf ON jr.job_id = jf.job_id,
+                     jsonb_array_elements_text(COALESCE(jf.skills,'[]'::jsonb)) skill
+                WHERE jr.posted_date >= CURRENT_DATE - INTERVAL '{days} days'
+                GROUP BY sk ORDER BY cnt DESC LIMIT 15
+            """
+        else:
+            q = """
+                SELECT LOWER(TRIM(skill::text)) as sk, COUNT(*) as cnt
+                FROM jobs_features jf, jsonb_array_elements_text(COALESCE(jf.skills,'[]'::jsonb)) skill
+                GROUP BY sk ORDER BY cnt DESC LIMIT 15
+            """
+        rows = session.execute(text(q)).fetchall()
+    logger.info("\n🛠️ Top skills mentioned:")
+    for sk, cnt in rows:
+        logger.info(f"   {sk}: {cnt:,}")
+
+    logger.info("\n" + "="*80)
 
 
 @cli.command()

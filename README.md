@@ -16,7 +16,7 @@
 
 The system generates insights like:
 
-- **"Saskatoon Data Analyst: 2.1y avg exp vs Toronto 4.3y - 65% junior roles"**
+- **"Toronto Data Analyst: 2.1y avg exp vs Toronto 4.3y - 65% junior roles"**
 - **"DevOps: Docker+AWS required everywhere, Power BI > Tableau 3:1 in Prairies"**
 - **"Vancouver +25% salary but +1.8y exp demand"**
 - **"IT Support: 80% remote in Calgary/Winnipeg"**
@@ -33,10 +33,10 @@ The system generates insights like:
 - ✅ 2,000+ jobs from 3+ sources
 
 ### Data Processing
-- ✅ NLP-powered feature extraction (experience, skills, seniority)
-- ✅ 500+ technical skills recognition
+- ✅ Regex + pattern-based feature extraction (experience, skills, seniority)
+- ✅ 40+ tech skills in extractor; 100+ in skills_master reference
 - ✅ Remote work detection (remote/hybrid/onsite)
-- ✅ 15+ data quality validation rules
+- ✅ Multi-rule validation (province, city, salary, spam checks)
 
 ### Analysis & Insights
 - ✅ Experience ladder by city and role
@@ -46,8 +46,8 @@ The system generates insights like:
 - ✅ Entry-level job recommendations
 
 ### Visualization
-- ✅ Power BI dashboard (5 interactive pages)
-- ✅ Automated data export for BI tools
+- ✅ **Streamlit dashboard** – Charts and AI-powered natural language search *(run `streamlit run streamlit_app.py`)*
+- ✅ **AI query** – Ask in plain English (e.g. "Find me Data Analyst jobs in Toronto"); LLM generates SQL, validation agent verifies intent
 - ✅ Daily refresh pipeline
 
 ---
@@ -61,7 +61,7 @@ The system generates insights like:
 | **Web Scraping** | BeautifulSoup, Selenium | Data collection |
 | **NLP** | spaCy | Feature extraction |
 | **Data Processing** | pandas, numpy | Data manipulation |
-| **Visualization** | Power BI | Interactive dashboards |
+| **Visualization** | Streamlit, Plotly | Interactive dashboard with AI search |
 | **Scheduling** | APScheduler, GitHub Actions | Automation |
 | **Testing** | pytest | Quality assurance |
 
@@ -72,28 +72,28 @@ The system generates insights like:
 ```
 JobMarket/
 ├── src/
-│   ├── collectors/          # Data collection from APIs/web scraping
+│   ├── collectors/          # Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS
 │   ├── processors/          # Validation, deduplication, feature extraction
-│   ├── analyzers/           # SQL queries, insights generation
-│   ├── database/            # ORM models, connection management
-│   └── utils/               # Logging, config, retry logic
+│   ├── database/            # ORM models, connection, storage
+│   └── utils/               # Config, logging, retry logic
 │
-├── tests/                   # Unit and integration tests
 ├── sql/                     # Database schema and queries
-│   ├── schema.sql          # Table definitions
-│   ├── seed_data.sql       # Skills master data
-│   └── analysis_queries.sql # Pre-built queries
+│   ├── schema.sql          # Tables and views
+│   └── seed_data.sql       # Skills master (100+ skills)
 │
-├── docs/                    # Comprehensive documentation
+├── docs/                    # Documentation
 │   ├── setup.md            # Setup instructions
-│   ├── architecture.md     # System design
-│   ├── api-integration.md  # API usage guide
-│   ├── data-pipeline.md    # Pipeline documentation
+│   ├── PROJECT_JOURNEY.md  # Build story (hiring managers)
 │   └── analysis-queries.md # SQL query reference
 │
-├── .env.example            # Environment variables template
-├── requirements.txt        # Python dependencies
-└── README.md              # This file
+├── collect_multi_source.py  # Main collector (multi-source)
+├── streamlit_app.py        # Streamlit dashboard with AI natural language search
+├── src/ai/                 # AI query agent (NL → SQL + validation)
+│   ├── backends/           # Ollama, OpenAI - plug-and-play
+│   └── query_agent.py
+├── run.py                  # CLI entry (process, analyze, stats)
+├── .env.example            # Environment template
+└── requirements.txt        # Dependencies
 ```
 
 ---
@@ -131,8 +131,8 @@ cp .env.example .env
 # Run sql/schema.sql in Supabase SQL Editor
 # Run sql/seed_data.sql to populate skills
 
-# 6. Test setup
-python test_pipeline.py
+# 6. Verify setup
+python run.py stats
 ```
 
 **For detailed setup instructions**, see [`docs/setup.md`](docs/setup.md).
@@ -141,37 +141,58 @@ python test_pipeline.py
 
 ## 📖 Usage
 
+### Interactive Dashboard (Recommended)
+
+```bash
+# Install dashboard deps (if not already)
+pip install streamlit plotly
+
+# Launch the visual dashboard
+streamlit run streamlit_app.py
+```
+
+Opens a browser with charts and **AI-powered search** – ask in natural language (e.g. "Data Analyst jobs in Toronto"). Uses Ollama by default; set `LLM_PROVIDER=openai` for OpenAI.
+
 ### Collect Jobs (CLI)
 
 ```bash
-# Collect jobs from all sources
-python src/main.py collect --cities Toronto Saskatoon --roles "data analyst" devops
+# Multi-source collection (Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, etc.)
+python collect_multi_source.py --sources jobbank jsearch adzuna linkedin remoteok
 
-# Run full pipeline (collect + process + analyze)
-python src/main.py full-pipeline --parallel
+# Or specific sources only
+python collect_multi_source.py --sources jobbank adzuna
 
-# Generate insights and export for Power BI
-python src/main.py analyze
+# Process raw jobs (validate, dedupe, extract features)
+python run.py process
+
+# Terminal analysis (or use Streamlit dashboard)
+python run.py analyze --days 90
+
+# Job Bank only (fewer sources)
+python run.py collect --city Toronto --city Vancouver --role "data analyst" --pages 3
 ```
 
 ### Programmatic Usage
 
 ```python
-from collectors.orchestrator import DataCollectionPipeline
-from processors.validator import DataValidator
-from analyzers.insights_generator import InsightsGenerator
+import sys
+sys.path.insert(0, "src")
 
-# Collect jobs
-collector = DataCollectionPipeline()
-raw_jobs = collector.run(parallel=True)
+from database.connection import DatabaseConnection
+from database.storage import JobStorage
+from processors.validator import JobValidator
+from processors.feature_extractor import FeatureExtractor
 
-# Validate data
-validator = DataValidator()
-valid_jobs, stats = validator.validate_batch(raw_jobs)
+# Collect: run collect_multi_source.py or use collectors directly
+from collectors.adzuna_collector import AdzunaCollector
+collector = AdzunaCollector()
+jobs = collector.collect_with_validation("Toronto", "data analyst", 2)
 
-# Generate insights
-analyzer = InsightsGenerator(db_url)
-insights = analyzer.generate_all_insights()
+# Validate and extract features
+validator = JobValidator(strict_mode=False)
+valid, invalid = validator.validate_batch(jobs)
+extractor = FeatureExtractor()
+features = extractor.extract_batch(valid)
 ```
 
 ---
@@ -180,7 +201,7 @@ insights = analyzer.generate_all_insights()
 
 ```
 STAGE 1: COLLECTION (30-60 min)
-  ↓ Job Bank + RapidAPI + RSS → 2,000+ jobs
+  ↓ collect_multi_source.py → Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS
 
 STAGE 2: VALIDATION (5-10 min)
   ↓ 15+ quality checks → 90%+ valid data
@@ -195,30 +216,23 @@ STAGE 5: STORAGE (2-5 min)
   ↓ Bulk insert → PostgreSQL
 
 STAGE 6: ANALYSIS (3-5 min)
-  ↓ SQL queries → Insights + Power BI refresh
+  ↓ python run.py analyze → Insights | Streamlit dashboard for quick view
 ```
 
 **Total Runtime**: ~60 minutes for full pipeline
 
 ---
 
-## 🎨 Power BI Dashboard
+## 📊 Streamlit Dashboard with AI Search
 
-The project exports data for a 5-page interactive dashboard:
+```bash
+streamlit run streamlit_app.py
+```
 
-1. **Canada Heatmap**: Geographic job distribution
-2. **Experience Ladder**: Career progression paths by city/role
-3. **Skills Radar**: In-demand technical skills heatmap
-4. **Location Strategy**: Remote work availability, opportunity scores
-5. **Action Plan**: Personalized job recommendations
+- **Overview tab** – Charts for jobs by source, cities, roles, skills, salary, experience ladder
+- **Ask AI tab** – Natural language queries (e.g. "Find me Data Analyst jobs in Toronto"). LLM converts to SQL, a validation agent checks it matches your intent, then results are shown.
 
-**Connect Power BI**:
-1. Open Power BI Desktop
-2. Get Data → PostgreSQL database
-3. Enter Supabase connection string (from .env)
-4. Select tables: `vw_jobs_full` or `mv_powerbi_export`
-5. Build visualizations using provided specs
-6. Set up scheduled refresh
+**Plug-and-play LLM**: Default is **Ollama** (local) – run `ollama serve` and `ollama pull llama3.2`. Or set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` for OpenAI.
 
 ---
 
@@ -247,11 +261,17 @@ LIMIT 20;
 
 ### City Opportunity Score
 ```sql
--- Composite metric: junior %, remote %, volume, low exp, good salary
-SELECT city, 
-       ROUND((junior_ratio * 0.3 + remote_ratio * 0.25 + ...) * 100, 1) as score
-FROM city_metrics
-ORDER BY score DESC;
+-- Use vw_city_stats or run:
+SELECT jr.city, jr.province,
+       COUNT(*) as total_jobs,
+       ROUND(100.0 * AVG(jf.is_junior::int), 1) as junior_pct,
+       ROUND(100.0 * AVG(CASE WHEN jr.remote_type IN ('remote','hybrid') THEN 1 ELSE 0 END), 1) as remote_pct,
+       ROUND(AVG(jr.salary_mid)) as avg_salary
+FROM jobs_raw jr
+LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id
+WHERE jr.posted_date >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY jr.city, jr.province
+ORDER BY junior_pct DESC, remote_pct DESC;
 ```
 
 **Full query library**: See [`docs/analysis-queries.md`](docs/analysis-queries.md)
@@ -261,33 +281,26 @@ ORDER BY score DESC;
 ## 🧪 Testing
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Run specific test file
-pytest tests/test_collectors.py
-
-# Run with verbose output
-pytest -v
+# Quick validation
+python run.py stats
+python -c "import sys; sys.path.insert(0,'src'); from database.connection import DatabaseConnection; DatabaseConnection(); print('DB OK')"
 ```
-
-**Coverage target**: 85%+ overall, 90%+ for collectors
 
 ---
 
 ## 🗂 Data Sources
 
-| Source | Type | Volume | Rate Limit |
-|--------|------|--------|-----------|
-| **Job Bank Canada** | Web Scraping | 60% (1,200+ jobs) | 2.5s/request |
-| **RapidAPI (Mantiks)** | REST API | 20% (400+ jobs) | 500/month |
-| **Workopolis RSS** | RSS Feed | 10% (200+ jobs) | Unlimited |
-| **Indeed RSS** | RSS Feed | 10% (200+ jobs) | Unlimited |
+| Source | Type | API Key | Rate Limit |
+|--------|------|---------|------------|
+| **Job Bank Canada** | Web Scraping | None | 2.5s/request |
+| **Adzuna** | REST API | Free (developer.adzuna.com) | Generous |
+| **JSearch** | RapidAPI | RAPIDAPI_KEY | Varies |
+| **LinkedIn Jobs** | RapidAPI | RAPIDAPI_KEY | Varies |
+| **RemoteOK** | REST API | None | Unlimited |
+| **Indeed RSS** | RSS Feed | None | May be limited |
+| **Workopolis RSS** | RSS Feed | None | May be limited |
 
-**Total**: 2,000+ jobs from 3+ sources (last 30 days)
+**Collect with**: `python collect_multi_source.py --sources jobbank adzuna jsearch linkedin remoteok`
 
 ---
 
@@ -295,32 +308,27 @@ pytest -v
 
 ### Daily Scheduled Pipeline
 
-```yaml
-# GitHub Actions (.github/workflows/daily_scrape.yml)
-name: Daily Job Scraper
-on:
-  schedule:
-    - cron: '0 2 * * *'  # 2 AM UTC daily
+GitHub Actions workflow (`.github/workflows/daily_scrape.yml`) runs daily at 7 AM UTC:
 
-jobs:
-  scrape:
-    runs-on: ubuntu-latest
-    steps:
-      - run: python src/main.py full-pipeline
-      - run: python src/main.py analyze
-```
+1. Collects from Job Bank, Adzuna, RemoteOK
+2. Processes raw jobs (extract features)
+3. Refreshes materialized view
+
+**Secrets to add** (Repo → Settings → Secrets): `SUPABASE_DB_POOLER_URL`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. Optional: `RAPIDAPI_KEY` for JSearch/LinkedIn.
 
 ### Local Scheduling
 
 ```python
 # Use APScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
+import subprocess
 
 scheduler = BlockingScheduler()
 
 @scheduler.scheduled_job('cron', hour=2, minute=0)
 def daily_scrape():
-    run_full_pipeline()
+    subprocess.run(["python", "collect_multi_source.py", "--sources", "jobbank", "adzuna"])
+    subprocess.run(["python", "run.py", "process"])
 
 scheduler.start()
 ```
@@ -329,7 +337,7 @@ scheduler.start()
 
 ## 🤝 Contributing
 
-We welcome contributions! Please follow these steps:
+I welcome contributions! Please follow these steps:
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/amazing-feature`
@@ -339,7 +347,7 @@ We welcome contributions! Please follow these steps:
 6. Push: `git push origin feature/amazing-feature`
 7. Open Pull Request
 
-**Code Style**: We use Black (line length 100), isort, and type hints.
+**Code Style**: I use Black (line length 100), isort, and type hints.
 
 ---
 
@@ -348,6 +356,7 @@ We welcome contributions! Please follow these steps:
 Comprehensive guides available in [`docs/`](docs/):
 
 - [`setup.md`](docs/setup.md) - Detailed setup instructions
+- **[`PROJECT_JOURNEY.md`](docs/PROJECT_JOURNEY.md)** - Build story: what I did, what failed, how I fixed it *(for hiring managers & curious users)*
 - [`architecture.md`](docs/architecture.md) - System design and components
 - [`api-integration.md`](docs/api-integration.md) - API usage and scraping
 - [`data-pipeline.md`](docs/data-pipeline.md) - Pipeline stages explained
@@ -371,35 +380,27 @@ Comprehensive guides available in [`docs/`](docs/):
 
 Current status:
 
-- ✅ 2,000+ jobs collected from 3+ sources
-- ✅ 90%+ data validation rate
-- ✅ 85%+ skills extraction accuracy
-- ✅ All 7 cities & 7 roles represented
-- ✅ 5-page Power BI dashboard
-- ✅ End-to-end refresh <60 mins
-- ✅ 5+ actionable insights generated
+- ✅ 4,600+ jobs from Job Bank, Adzuna, RemoteOK, JSearch, LinkedIn
+- ✅ Streamlit dashboard with AI natural language search
+- ✅ Multi-source collection via `collect_multi_source.py`
+- ✅ Feature extraction (experience, skills, remote)
+- ✅ GitHub Actions workflow for daily refresh (optional)
 
 ---
 
 ## 🚧 Roadmap
 
 ### Phase 1 (Current - MVP)
-- [x] Multi-source data collection
+- [x] Multi-source data collection (collect_multi_source.py)
 - [x] Feature extraction (exp, skills, remote)
-- [x] Basic analysis queries
-- [x] Power BI export
+- [x] Basic analysis (CLI + Streamlit dashboard)
+- [x] Streamlit dashboard with AI NL-to-SQL + validation agent
 
 ### Phase 2 (Next 3 months)
 - [ ] ML salary predictor (XGBoost)
 - [ ] Real-time job alerts
 - [ ] LinkedIn integration
 - [ ] Mobile-responsive dashboard
-
-### Phase 3 (6-12 months)
-- [ ] AI cover letter generator
-- [ ] Interview prep resources
-- [ ] Career path predictor
-- [ ] Company culture analysis
 
 ---
 
@@ -429,9 +430,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 💡 For Job Seekers
 
-This project is built **by job seekers, for job seekers**. Our mission is to democratize access to job market insights and help you make informed career decisions.
+This project is built **by job seekers, for job seekers**. My mission is to democratize access to job market insights and help you make informed career decisions.
 
-**Using this project?** Share your success story! We'd love to hear how the data helped you land your dream job.
+**Using this project?** Share your success story! I'd love to hear how the data helped you land your dream job.
 
 ---
 

@@ -75,6 +75,11 @@ class Config:
     RAPIDAPI_HOST: str = os.getenv('RAPIDAPI_HOST', 'linkedin-jobs.p.rapidapi.com')
     ADZUNA_APP_ID: str = os.getenv('ADZUNA_APP_ID', '')
     ADZUNA_APP_KEY: str = os.getenv('ADZUNA_APP_KEY', '')
+
+    # AI / LLM (plug-and-play: ollama or openai)
+    LLM_PROVIDER: str = os.getenv('LLM_PROVIDER', 'ollama')
+    OLLAMA_MODEL: str = os.getenv('OLLAMA_MODEL', 'llama3.2')
+    OLLAMA_BASE_URL: str = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
     
     # Scraping Configuration
     JOBBANK_RATE_LIMIT_SECONDS: float = float(os.getenv('JOBBANK_RATE_LIMIT_SECONDS', '2.5'))

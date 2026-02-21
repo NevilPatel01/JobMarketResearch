@@ -208,18 +208,6 @@ class JobStorage:
         except Exception as e:
             self.logger.error(f"Failed to record metrics: {e}")
     
-    def refresh_powerbi_view(self):
-        """Refresh materialized view for Power BI."""
-        try:
-            with self.db.engine.connect() as conn:
-                conn.execute(text("REFRESH MATERIALIZED VIEW mv_powerbi_export"))
-                conn.commit()
-            
-            self.logger.info("Power BI materialized view refreshed")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to refresh Power BI view: {e}")
-    
     def get_table_counts(self) -> Dict[str, int]:
         """
         Get row counts for all tables.

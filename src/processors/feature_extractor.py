@@ -75,8 +75,12 @@ class FeatureExtractor:
         description = job.get('description', '').lower()
         combined_text = f"{title} {description}"
         
-        # Extract experience requirements
+        # Extract experience requirements (cap at 30 years - DB exp_avg is DECIMAL(4,2))
         exp_min, exp_max = self._extract_experience(combined_text)
+        if exp_min is not None and exp_min > 30:
+            exp_min, exp_max = None, None  # Likely salary false positive
+        if exp_max is not None and exp_max > 30:
+            exp_max = min(exp_max, 30) if exp_min is not None else None
         
         # Detect remote type
         remote_type = job.get('remote_type') or self._detect_remote_type(combined_text)
@@ -113,6 +117,9 @@ class FeatureExtractor:
                     try:
                         min_exp = int(matches[0][0])
                         max_exp = int(matches[0][1])
+                        # Reject obvious false positives (salary numbers)
+                        if min_exp > 30 or max_exp > 30:
+                            continue
                         return min_exp, max_exp
                     except (ValueError, IndexError):
                         continue
@@ -121,8 +128,10 @@ class FeatureExtractor:
                 elif isinstance(matches[0], str):
                     try:
                         exp = int(matches[0])
+                        if exp > 30:  # Salary false positive
+                            continue
                         # For "X+" patterns, assume X to X+3
-                        return exp, exp + 3
+                        return exp, min(exp + 3, 30)
                     except ValueError:
                         continue
         
@@ -219,7 +228,7 @@ class FeatureExtractor:
         if exp_min is None and exp_max is None:
             return 'mid'  # Default assumption
         
-        avg_exp = (exp_min or 0 + exp_max or exp_min or 0) / 2.0
+        avg_exp = ((exp_min or 0) + (exp_max or exp_min or 0)) / 2.0
         
         if avg_exp <= 1:
             return 'entry'
