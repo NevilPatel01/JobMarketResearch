@@ -111,42 +111,23 @@ flowchart TB
 
 ## 📁 Project Structure
 
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0ea5e9'}}}%%
-flowchart TB
-    subgraph ROOT["JobMarket/"]
-        subgraph SRC["src/"]
-            C[collectors/]
-            P[processors/]
-            DB[database/]
-            U[utils/]
-            AI[ai/]
-            AI2[backends/ · query_agent.py]
-        end
-        subgraph SQL["sql/"]
-            S1[schema.sql]
-            S2[seed_data.sql]
-        end
-        subgraph DOCS["docs/"]
-            D1[setup.md]
-            D2[PROJECT_JOURNEY.md]
-            D3[analysis-queries.md]
-        end
-        CM[collect_multi_source.py]
-        ST[streamlit_app.py]
-        RUN[run.py]
-        ENV[.env.example]
-        REQ[requirements.txt]
-    end
-    
-    AI --> AI2
-    
-    style SRC fill:#e0f2fe
-    style SQL fill:#d1fae5
-    style DOCS fill:#fef3c7
-    style CM fill:#6366f1
-    style ST fill:#6366f1
-    style RUN fill:#6366f1
+```
+JobMarket/
+├── src/
+│   ├── collectors/          # Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS
+│   ├── processors/          # Validation, deduplication, feature extraction
+│   ├── database/            # ORM models, connection, storage
+│   └── utils/               # Config, logging, retry logic
+├── sql/                     # schema.sql, seed_data.sql
+├── docs/                    # setup.md, PROJECT_JOURNEY.md, analysis-queries.md
+├── collect_multi_source.py  # Main collector
+├── streamlit_app.py        # Streamlit dashboard with AI search
+├── src/ai/                  # AI query agent (NL → SQL + validation)
+│   ├── backends/           # Ollama, OpenAI
+│   └── query_agent.py
+├── run.py                   # CLI (process, analyze, stats)
+├── .env.example
+└── requirements.txt
 ```
 
 | Path | Purpose |
@@ -265,46 +246,33 @@ features = extractor.extract_batch(valid)
 ## 📊 Data Pipeline
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0ea5e9','primaryTextColor':'#fff','primaryBorderColor':'#0284c7','lineColor':'#64748b','secondaryColor':'#10b981','tertiaryColor':'#6366f1'}}}%%
 flowchart TB
-    subgraph COLLECT["STAGE 1: Collection (30-60 min)"]
-        A[Job Bank] 
-        B[Adzuna]
-        C[JSearch / LinkedIn]
-        D[RemoteOK / RSS]
-        A & B & C & D --> E[collect_multi_source.py]
+    subgraph S1["1. Collection"]
+        A[Job Bank, Adzuna, JSearch, RemoteOK, RSS]
     end
-    
-    subgraph VALID["STAGE 2: Validation (5-10 min)"]
-        E --> F[15+ quality checks]
-        F --> G["90%+ valid data"]
+    subgraph S2["2. Validation"]
+        B[Quality checks]
     end
-    
-    subgraph DEDUPE["STAGE 3: Deduplication (2-5 min)"]
-        G --> H[Hash-based matching]
-        H --> I[Unique jobs]
+    subgraph S3["3. Deduplication"]
+        C[Unique jobs]
     end
-    
-    subgraph EXTRACT["STAGE 4: Feature Extraction (10-20 min)"]
-        I --> J[NLP + Regex]
-        J --> K[Experience · Skills · Remote]
+    subgraph S4["4. Feature Extraction"]
+        D[Experience, Skills, Remote]
     end
-    
-    subgraph STORE["STAGE 5: Storage (2-5 min)"]
-        K --> L[Bulk insert → PostgreSQL]
+    subgraph S5["5. Storage"]
+        E[(PostgreSQL)]
     end
-    
-    subgraph ANALYZE["STAGE 6: Analysis (3-5 min)"]
-        L --> M[run.py analyze]
-        L --> N[Streamlit Dashboard]
+    subgraph S6["6. Analysis"]
+        F[run.py · Streamlit]
     end
+    A --> B --> C --> D --> E --> F
     
-    style COLLECT fill:#e0f2fe
-    style VALID fill:#d1fae5
-    style DEDUPE fill:#ede9fe
-    style EXTRACT fill:#fef3c7
-    style STORE fill:#fce7f3
-    style ANALYZE fill:#e0e7ff
+    style S1 fill:#e0f2fe
+    style S2 fill:#d1fae5
+    style S3 fill:#ede9fe
+    style S4 fill:#e0e7ff
+    style S5 fill:#fce7f3
+    style S6 fill:#e0e7ff
 ```
 
 **Total Runtime**: ~60 minutes for full pipeline
