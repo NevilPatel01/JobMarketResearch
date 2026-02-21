@@ -13,7 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from .base_collector import BaseCollector
-from ..utils import Config, retry_on_exception, rate_limit
+from utils import Config, retry_on_exception, rate_limit
 
 
 class JobBankCollector(BaseCollector):
@@ -139,8 +139,8 @@ class JobBankCollector(BaseCollector):
         soup = BeautifulSoup(html, 'html.parser')
         jobs = []
         
-        # Find all job listing articles
-        job_articles = soup.find_all('article', class_='resultJobItem')
+        # Find all job listing articles - they have class "action-buttons"
+        job_articles = soup.find_all('article', class_='action-buttons')
         
         for article in job_articles:
             try:
@@ -165,21 +165,12 @@ class JobBankCollector(BaseCollector):
             Job dictionary or None if parsing failed
         """
         try:
-            # Extract job title and URL
-            title_tag = article.find('h3', class_='noctitle')
-            if not title_tag:
-                title_tag = article.find('h2', class_='jobTitle') or article.find('h3')
-            
-            if not title_tag:
-                return None
-            
-            link_tag = title_tag.find('a')
+            # Find the <a> tag with class "resultJobItem"
+            link_tag = article.find('a', class_='resultJobItem')
             if not link_tag:
                 return None
             
-            title = link_tag.get_text(strip=True)
             job_path = link_tag.get('href', '')
-            
             if not job_path:
                 return None
             
@@ -187,30 +178,38 @@ class JobBankCollector(BaseCollector):
             job_id = self._extract_job_id_from_path(job_path)
             url = urljoin('https://www.jobbank.gc.ca', job_path)
             
-            # Extract company
-            company_tag = article.find('span', class_='business')
-            if not company_tag:
-                company_tag = article.find('div', class_='company')
+            # Extract job title from span with class "noctitle"
+            title_tag = link_tag.find('span', class_='noctitle')
+            if not title_tag:
+                return None
+            title = title_tag.get_text(strip=True)
+            
+            # Extract company from li with class "business"
+            company_tag = link_tag.find('li', class_='business')
             company = company_tag.get_text(strip=True) if company_tag else "Unknown"
             
-            # Extract location
-            location_tag = article.find('span', class_='location')
-            if not location_tag:
-                location_tag = article.find('div', class_='location')
-            location = location_tag.get_text(strip=True) if location_tag else city
+            # Extract location from li with class "location"
+            location_tag = link_tag.find('li', class_='location')
+            if location_tag:
+                # Remove screen-reader-only text (class wb-inv)
+                for invisible in location_tag.find_all(class_='wb-inv'):
+                    invisible.decompose()
+                for icon in location_tag.find_all(['span'], {'aria-hidden': 'true'}):
+                    icon.decompose()
+                location = location_tag.get_text(strip=True)
+                # Remove any "Location" prefix that might remain
+                location = re.sub(r'^Location\s*', '', location, flags=re.IGNORECASE)
+            else:
+                location = city
             
             city_normalized, province = self._parse_location(location)
             
-            # Extract salary if available
-            salary_tag = article.find('span', class_='salary')
-            if not salary_tag:
-                salary_tag = article.find('div', class_='salary')
+            # Extract salary from li with class "salary"
+            salary_tag = link_tag.find('li', class_='salary')
             salary_min, salary_max = self._parse_salary(salary_tag.get_text(strip=True)) if salary_tag else (None, None)
             
-            # Extract posting date
-            date_tag = article.find('time')
-            if not date_tag:
-                date_tag = article.find('span', class_='date')
+            # Extract posting date from li with class "date"
+            date_tag = link_tag.find('li', class_='date')
             posted_date = self._parse_date(date_tag.get_text(strip=True) if date_tag else None)
             
             return {
@@ -247,7 +246,7 @@ class JobBankCollector(BaseCollector):
         Parse location string to city and province.
         
         Args:
-            location: Location string (e.g., "Toronto, Ontario")
+            location: Location string (e.g., "Toronto, Ontario" or "Toronto (ON)")
             
         Returns:
             Tuple of (city, province_code)
@@ -260,6 +259,14 @@ class JobBankCollector(BaseCollector):
             'northwest territories': 'NT', 'nunavut': 'NU', 'yukon': 'YT'
         }
         
+        # Try to match "City (PROV)" pattern first (e.g., "Toronto (ON)")
+        paren_match = re.search(r'^(.+?)\s*\(([A-Z]{2})\)$', location)
+        if paren_match:
+            city = paren_match.group(1).strip()
+            province = paren_match.group(2).strip()
+            return city, province
+        
+        # Otherwise use comma separation
         parts = [p.strip() for p in location.split(',')]
         city = parts[0] if parts else "Unknown"
         
@@ -313,7 +320,7 @@ class JobBankCollector(BaseCollector):
         Parse posting date from text.
         
         Args:
-            date_text: Date text (e.g., "Posted 5 days ago", "2026-02-15")
+            date_text: Date text (e.g., "Posted 5 days ago", "February 08, 2026")
             
         Returns:
             ISO format date string (YYYY-MM-DD)
@@ -325,6 +332,13 @@ class JobBankCollector(BaseCollector):
         iso_match = re.search(r'(\d{4}-\d{2}-\d{2})', date_text)
         if iso_match:
             return iso_match.group(1)
+        
+        # Try "Month DD, YYYY" format (e.g., "February 08, 2026")
+        try:
+            parsed_date = datetime.strptime(date_text.strip(), "%B %d, %Y")
+            return parsed_date.date().isoformat()
+        except ValueError:
+            pass
         
         # Try "X days ago"
         days_match = re.search(r'(\d+)\s+days?\s+ago', date_text, re.IGNORECASE)

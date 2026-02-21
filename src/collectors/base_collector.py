@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import logging
 
-from ..utils import setup_logger
+from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -65,11 +65,18 @@ class BaseCollector(ABC):
         Returns:
             True if valid, False otherwise
         """
-        # Check required keys
+        # Check required keys (description can be empty for initial collection)
         for key in self.REQUIRED_KEYS:
-            if key not in job or job[key] is None or job[key] == '':
-                self.logger.warning(f"Job missing required key: {key}")
-                return False
+            if key == 'description':
+                # Allow empty description (can be fetched later)
+                if key not in job or job[key] is None:
+                    self.logger.warning(f"Job missing required key: {key}")
+                    return False
+            else:
+                # Other keys must be non-empty
+                if key not in job or job[key] is None or job[key] == '':
+                    self.logger.warning(f"Job missing required key: {key}")
+                    return False
         
         # Check job_id format (should start with source name)
         source = job.get('source', '')

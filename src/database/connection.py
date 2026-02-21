@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 
-from ..utils.config import Config
+from utils.config import Config
 
 logger = logging.getLogger(__name__)
 

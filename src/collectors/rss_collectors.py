@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import feedparser
 
 from .base_collector import BaseCollector
-from ..utils import retry_on_exception, Config
+from utils import retry_on_exception, Config
 
 
 class IndeedRSSCollector(BaseCollector):

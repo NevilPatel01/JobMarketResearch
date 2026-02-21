@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import requests
 
 from .base_collector import BaseCollector
-from ..utils import Config, retry_on_exception
+from utils import Config, retry_on_exception
 
 
 class RapidAPICollector(BaseCollector):
