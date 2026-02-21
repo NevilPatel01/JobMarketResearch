@@ -54,6 +54,48 @@ The system generates insights like:
 
 ## 🛠 Tech Stack
 
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart TB
+    subgraph FRONT["Visualization"]
+        ST[Streamlit]
+        PL[Plotly]
+    end
+    
+    subgraph CORE["Core"]
+        PY[Python 3.11+]
+        PD[pandas · numpy]
+    end
+    
+    subgraph DATA["Data Layer"]
+        PG[(PostgreSQL)]
+        SUP[Supabase]
+    end
+    
+    subgraph COLLECT["Collection"]
+        BS[BeautifulSoup]
+        SEL[Selenium]
+    end
+    
+    subgraph AI["AI"]
+        SP[spaCy]
+        OLL[Ollama / OpenAI]
+    end
+    
+    PY --> PD --> ST
+    ST --> PL
+    PD --> PG
+    PG --> SUP
+    PY --> BS
+    PY --> SEL
+    PY --> SP
+    ST --> OLL
+    
+    style FRONT fill:#6366f1
+    style DATA fill:#10b981
+    style AI fill:#f59e0b
+```
+
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Language** | Python 3.11+ | Core development |
@@ -69,32 +111,55 @@ The system generates insights like:
 
 ## 📁 Project Structure
 
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0ea5e9'}}}%%
+flowchart TB
+    subgraph ROOT["JobMarket/"]
+        subgraph SRC["src/"]
+            C[collectors/]
+            P[processors/]
+            DB[database/]
+            U[utils/]
+            AI[ai/]
+            AI2[backends/ · query_agent.py]
+        end
+        subgraph SQL["sql/"]
+            S1[schema.sql]
+            S2[seed_data.sql]
+        end
+        subgraph DOCS["docs/"]
+            D1[setup.md]
+            D2[PROJECT_JOURNEY.md]
+            D3[analysis-queries.md]
+        end
+        CM[collect_multi_source.py]
+        ST[streamlit_app.py]
+        RUN[run.py]
+        ENV[.env.example]
+        REQ[requirements.txt]
+    end
+    
+    AI --> AI2
+    
+    style SRC fill:#e0f2fe
+    style SQL fill:#d1fae5
+    style DOCS fill:#fef3c7
+    style CM fill:#6366f1
+    style ST fill:#6366f1
+    style RUN fill:#6366f1
 ```
-JobMarket/
-├── src/
-│   ├── collectors/          # Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS
-│   ├── processors/          # Validation, deduplication, feature extraction
-│   ├── database/            # ORM models, connection, storage
-│   └── utils/               # Config, logging, retry logic
-│
-├── sql/                     # Database schema and queries
-│   ├── schema.sql          # Tables and views
-│   └── seed_data.sql       # Skills master (100+ skills)
-│
-├── docs/                    # Documentation
-│   ├── setup.md            # Setup instructions
-│   ├── PROJECT_JOURNEY.md  # Build story (hiring managers)
-│   └── analysis-queries.md # SQL query reference
-│
-├── collect_multi_source.py  # Main collector (multi-source)
-├── streamlit_app.py        # Streamlit dashboard with AI natural language search
-├── src/ai/                 # AI query agent (NL → SQL + validation)
-│   ├── backends/           # Ollama, OpenAI - plug-and-play
-│   └── query_agent.py
-├── run.py                  # CLI entry (process, analyze, stats)
-├── .env.example            # Environment template
-└── requirements.txt        # Dependencies
-```
+
+| Path | Purpose |
+|------|---------|
+| `src/collectors/` | Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS |
+| `src/processors/` | Validation, deduplication, feature extraction |
+| `src/database/` | ORM models, connection, storage |
+| `src/ai/` | AI query agent (NL → SQL + validation) |
+| `sql/` | Database schema and queries |
+| `docs/` | Setup, PROJECT_JOURNEY, analysis-queries |
+| `collect_multi_source.py` | Main collector |
+| `streamlit_app.py` | Dashboard with AI search |
+| `run.py` | CLI (process, analyze, stats) |
 
 ---
 
@@ -199,24 +264,47 @@ features = extractor.extract_batch(valid)
 
 ## 📊 Data Pipeline
 
-```
-STAGE 1: COLLECTION (30-60 min)
-  ↓ collect_multi_source.py → Job Bank, Adzuna, JSearch, LinkedIn, RemoteOK, RSS
-
-STAGE 2: VALIDATION (5-10 min)
-  ↓ 15+ quality checks → 90%+ valid data
-
-STAGE 3: DEDUPLICATION (2-5 min)
-  ↓ Hash-based matching → Unique jobs
-
-STAGE 4: FEATURE EXTRACTION (10-20 min)
-  ↓ NLP + Regex → Experience, Skills, Remote
-
-STAGE 5: STORAGE (2-5 min)
-  ↓ Bulk insert → PostgreSQL
-
-STAGE 6: ANALYSIS (3-5 min)
-  ↓ python run.py analyze → Insights | Streamlit dashboard for quick view
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0ea5e9','primaryTextColor':'#fff','primaryBorderColor':'#0284c7','lineColor':'#64748b','secondaryColor':'#10b981','tertiaryColor':'#6366f1'}}}%%
+flowchart TB
+    subgraph COLLECT["STAGE 1: Collection (30-60 min)"]
+        A[Job Bank] 
+        B[Adzuna]
+        C[JSearch / LinkedIn]
+        D[RemoteOK / RSS]
+        A & B & C & D --> E[collect_multi_source.py]
+    end
+    
+    subgraph VALID["STAGE 2: Validation (5-10 min)"]
+        E --> F[15+ quality checks]
+        F --> G["90%+ valid data"]
+    end
+    
+    subgraph DEDUPE["STAGE 3: Deduplication (2-5 min)"]
+        G --> H[Hash-based matching]
+        H --> I[Unique jobs]
+    end
+    
+    subgraph EXTRACT["STAGE 4: Feature Extraction (10-20 min)"]
+        I --> J[NLP + Regex]
+        J --> K[Experience · Skills · Remote]
+    end
+    
+    subgraph STORE["STAGE 5: Storage (2-5 min)"]
+        K --> L[Bulk insert → PostgreSQL]
+    end
+    
+    subgraph ANALYZE["STAGE 6: Analysis (3-5 min)"]
+        L --> M[run.py analyze]
+        L --> N[Streamlit Dashboard]
+    end
+    
+    style COLLECT fill:#e0f2fe
+    style VALID fill:#d1fae5
+    style DEDUPE fill:#ede9fe
+    style EXTRACT fill:#fef3c7
+    style STORE fill:#fce7f3
+    style ANALYZE fill:#e0e7ff
 ```
 
 **Total Runtime**: ~60 minutes for full pipeline
@@ -227,6 +315,43 @@ STAGE 6: ANALYSIS (3-5 min)
 
 ```bash
 streamlit run streamlit_app.py
+```
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#6366f1','primaryTextColor':'#fff'}}}%%
+flowchart LR
+    subgraph USER["👤 User"]
+        A["Natural language query\n'Data Analyst in Toronto'"]
+    end
+    
+    subgraph AI["🤖 AI Layer"]
+        B[Simple pattern match?]
+        C[Ollama / OpenAI]
+        D[Generate SQL]
+        E[Validation agent]
+    end
+    
+    subgraph DB["🗄️ Database"]
+        F[PostgreSQL]
+    end
+    
+    subgraph OUT["📋 Output"]
+        G[Job results table]
+        H[LinkColumn URLs]
+    end
+    
+    A --> B
+    B -->|Yes| F
+    B -->|No| C
+    C --> D --> E --> F
+    F --> G --> H
+    
+    style A fill:#e0e7ff
+    style C fill:#c7d2fe
+    style D fill:#a5b4fc
+    style E fill:#818cf8
+    style F fill:#10b981
+    style G fill:#34d399
 ```
 
 - **Overview tab** – Charts for jobs by source, cities, roles, skills, salary, experience ladder
@@ -390,19 +515,21 @@ Current status:
 
 ## 🚧 Roadmap
 
-### Phase 1 (Current - MVP)
+### Phase 1 
 - [x] Multi-source data collection (collect_multi_source.py)
 - [x] Feature extraction (exp, skills, remote)
 - [x] Basic analysis (CLI + Streamlit dashboard)
 - [x] Streamlit dashboard with AI NL-to-SQL + validation agent
 
-### Phase 2 (Next 3 months)
+### Phase 2 
 - [ ] ML salary predictor (XGBoost)
 - [ ] Real-time job alerts
 - [ ] LinkedIn integration
 - [ ] Mobile-responsive dashboard
 
 ---
+
+canada-jobs, tech-jobs, job-market-analysis, streamlit, python, postgresql, data-analytics, web-scraping, job-aggregator, supabase, ai, ollama, job-seekers, data-engineering, nlp
 
 ## 📄 License
 

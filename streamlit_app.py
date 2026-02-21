@@ -120,17 +120,21 @@ def run_query(db, query: str, params=None, return_columns=False):
 
 def _simple_keyword_search(query: str) -> tuple[str, dict] | None:
     """
-    Try to build SQL for simple "X in Y" or "X jobs in Y" patterns.
+    Try to build SQL for simple "X in Y" or "X jobs in Y" patterns (no date filters).
     Returns (sql_with_params, params) if pattern matches, else None.
-    Uses parameterized queries for safety.
+    Queries with date modifiers (e.g. "within last 5 days") fall through to AI.
     """
     q = query.strip()
+    # Don't use simple path when user asks for date filtering - AI handles that
+    if re.search(r"within\s+last|last\s+\d+\s+days?|past\s+\d+|posted\s+(in\s+)?last|recent(ly)?", q, re.I):
+        return None
     m = re.search(r"(.+?)\s+in\s+(.+)$", q, re.IGNORECASE | re.DOTALL)
     if not m:
         return None
     role_part = re.sub(r"^(find\s+me\s+|show\s+me\s+|get\s+|jobs?\s*)*", "", m.group(1), flags=re.I).strip()
     city = m.group(2).strip()
-    if not role_part or not city:
+    # City should be a single location, not "Toronto within last 5 days"
+    if not role_part or not city or len(city) > 50:
         return None
     sql = """
         SELECT title, company, city, province, source, posted_date, url
@@ -168,23 +172,24 @@ def render_ask(db):
             except Exception as e:
                 st.error(f"Query failed: {e}")
                 return
-        r, c = params.get("role", "").replace("'", "''"), params.get("city", "").replace("'", "''")
-        sql_display = f"""SELECT title, company, city, province, source, posted_date, url
-        FROM jobs_raw
-        WHERE title ILIKE '%{r}%' AND city ILIKE '%{c}%'
-        ORDER BY posted_date DESC
-        LIMIT 100"""
-        st.code(sql_display, language="sql")
         if rows:
             cols = col_names if col_names else [f"Col{i}" for i in range(len(rows[0]))]
             df = pd.DataFrame(rows, columns=cols)
             col_config = {}
-            for c in ["url", "URL"]:
-                if c in df.columns:
-                    col_config[c] = st.column_config.LinkColumn(c)
+            for link_col in ["url", "URL"]:
+                if link_col in df.columns:
+                    col_config[link_col] = st.column_config.LinkColumn(link_col)
                     break
-            st.dataframe(df, width="stretch", hide_index=True, column_config=col_config)
             st.success(f"Found {len(rows)} results")
+            st.dataframe(df, width="stretch", hide_index=True, column_config=col_config)
+            with st.expander("View SQL query"):
+                r, c = params.get("role", "").replace("'", "''"), params.get("city", "").replace("'", "''")
+                sql_display = f"""SELECT title, company, city, province, source, posted_date, url
+        FROM jobs_raw
+        WHERE title ILIKE '%{r}%' AND city ILIKE '%{c}%'
+        ORDER BY posted_date DESC
+        LIMIT 100"""
+                st.code(sql_display, language="sql")
         else:
             st.warning("No jobs match your query.")
         return
@@ -198,7 +203,6 @@ def render_ask(db):
                 st.error(err)
                 return
             
-            st.code(sql, language="sql")
             # Safety: run only first statement
             sql_safe = sql.split(";")[0].strip() or sql
             if "LIMIT" not in sql_safe.upper():
@@ -213,8 +217,10 @@ def render_ask(db):
                     if link_col in df.columns:
                         col_config[link_col] = st.column_config.LinkColumn(link_col)
                         break
-                st.dataframe(df, width="stretch", hide_index=True, column_config=col_config)
                 st.success(f"Found {len(rows)} results")
+                st.dataframe(df, width="stretch", hide_index=True, column_config=col_config)
+                with st.expander("View SQL query"):
+                    st.code(sql, language="sql")
             else:
                 st.warning("No jobs match your query.")
         except ValueError as e:
