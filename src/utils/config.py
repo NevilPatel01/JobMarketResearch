@@ -76,10 +76,11 @@ class Config:
     ADZUNA_APP_ID: str = os.getenv('ADZUNA_APP_ID', '')
     ADZUNA_APP_KEY: str = os.getenv('ADZUNA_APP_KEY', '')
 
-    # AI / LLM (plug-and-play: ollama or openai)
+    # AI / LLM (plug-and-play: ollama cloud, ollama local, or openai)
     LLM_PROVIDER: str = os.getenv('LLM_PROVIDER', 'ollama')
-    OLLAMA_MODEL: str = os.getenv('OLLAMA_MODEL', 'llama3.2')
-    OLLAMA_BASE_URL: str = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    OLLAMA_MODEL: str = os.getenv('OLLAMA_MODEL', '')  # Backend picks cloud vs local default
+    OLLAMA_API_KEY: str = os.getenv('OLLAMA_API_KEY', '')  # Cloud: ollama.com (preferred)
+    OLLAMA_BASE_URL: str = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')  # Local fallback
     
     # Scraping Configuration
     JOBBANK_RATE_LIMIT_SECONDS: float = float(os.getenv('JOBBANK_RATE_LIMIT_SECONDS', '2.5'))

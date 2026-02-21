@@ -100,6 +100,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# Exclude jobs with bad salary (e.g. $8-$35 hourly misparsed as annual)
+SALARY_FILTER = "((jr.salary_min IS NULL AND jr.salary_max IS NULL) OR COALESCE(jr.salary_max, jr.salary_mid) >= 10000)"
+SALARY_FILTER_RAW = "((salary_min IS NULL AND salary_max IS NULL) OR COALESCE(salary_max, salary_mid) >= 10000)"
+
+
 @st.cache_resource
 def get_db():
     """Connect to database (cached for session)."""
@@ -136,10 +141,11 @@ def _simple_keyword_search(query: str) -> tuple[str, dict] | None:
     # City should be a single location, not "Toronto within last 5 days"
     if not role_part or not city or len(city) > 50:
         return None
-    sql = """
+    sql = f"""
         SELECT title, company, city, province, source, posted_date, url
         FROM jobs_raw
         WHERE title ILIKE '%' || :role || '%' AND city ILIKE '%' || :city || '%'
+          AND {SALARY_FILTER_RAW}
         ORDER BY posted_date DESC
         LIMIT 100
     """.strip()
@@ -151,13 +157,16 @@ def render_ask(db):
     st.subheader("🤖 Ask in Natural Language")
     st.caption("e.g. 'Find me Data Analyst jobs in Hamilton' – AI converts to SQL and runs it")
     
-    query = st.text_input("Ask", placeholder="Find me Data Analyst jobs in Hamilton", key="nl_query")
+    with st.form("ask_form", clear_on_submit=False):
+        query = st.text_input("Ask", placeholder="Find me Data Analyst jobs in Hamilton", key="nl_query")
+        submitted = st.form_submit_button("Search")
     
-    if not query or len(query.strip()) < 3:
+    if not submitted:
         st.info("Ask a question about jobs, e.g. 'Data Analyst in Toronto', 'remote software engineer jobs'")
         return
     
-    if not st.button("Search", key="ask_btn"):
+    if not query or len(query.strip()) < 3:
+        st.warning("Please enter at least 3 characters.")
         return
     
     q = query.strip()
@@ -187,6 +196,7 @@ def render_ask(db):
                 sql_display = f"""SELECT title, company, city, province, source, posted_date, url
         FROM jobs_raw
         WHERE title ILIKE '%{r}%' AND city ILIKE '%{c}%'
+          AND {SALARY_FILTER_RAW}
         ORDER BY posted_date DESC
         LIMIT 100"""
                 st.code(sql_display, language="sql")
@@ -195,7 +205,7 @@ def render_ask(db):
         return
 
     # AI path: LLM generates SQL (slower, handles complex queries)
-    with st.spinner("Generating query... validating... running... (this may take 30–60s with Ollama)"):
+    with st.spinner("Generating query... validating... running..."):
         try:
             from ai.query_agent import nl_to_sql_and_validate
             sql, err = nl_to_sql_and_validate(q)
@@ -225,11 +235,179 @@ def render_ask(db):
                 st.warning("No jobs match your query.")
         except ValueError as e:
             if "OPENAI_API_KEY" in str(e) or "LLM_PROVIDER" in str(e):
-                st.error("For AI search: use Ollama (default, run `ollama serve`) or set LLM_PROVIDER=openai and OPENAI_API_KEY.")
+                st.error("For AI search: set OLLAMA_API_KEY (ollama.com) or LLM_PROVIDER=openai with OPENAI_API_KEY.")
             else:
                 st.error(str(e))
         except Exception as e:
-            st.error(f"Error: {e}")
+            err_msg = str(e)
+            if "404" in err_msg and "model" in err_msg.lower():
+                st.error(f"Model not found. For Ollama Cloud, set OLLAMA_MODEL to a cloud model (e.g. qwen3-next:80b, ministral-3:8b) in .env. See ollama.com/search?c=cloud")
+            else:
+                st.error(f"Error: {e}")
+
+
+def _get_filter_options(db):
+    """Load distinct provinces and top cities for filter dropdowns."""
+    with db.get_session() as session:
+        prov = session.execute(text(
+            "SELECT DISTINCT province FROM jobs_raw WHERE province IS NOT NULL ORDER BY province"
+        )).fetchall()
+        cities = session.execute(text(
+            """SELECT city FROM jobs_raw GROUP BY city ORDER BY COUNT(*) DESC LIMIT 80"""
+        )).fetchall()
+    return [p[0] for p in prov], [c[0] for c in cities]
+
+
+def render_filter_search(db):
+    """Filter-based search: Job Title, Province, City, Pay range, Posted date."""
+    st.subheader("🔍 Filter Search")
+    st.caption("Combine filters to narrow down job listings. Leave fields empty to include all.")
+    
+    provinces, cities = _get_filter_options(db)
+    province_options = [""] + provinces
+    city_options = [""] + cities
+    
+    with st.form("filter_form", clear_on_submit=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            job_title = st.text_input(
+                "Job Title",
+                placeholder="e.g. Software, Data Analyst, Developer",
+                help="Partial match – e.g. 'Software' matches Software Developer, Software Engineer, etc."
+            )
+            province = st.selectbox(
+                "Province",
+                options=province_options,
+                format_func=lambda x: "Any" if not x else f"{x} ({_province_name(x)})",
+                help="Filter by Canadian province/territory"
+            )
+            salary_min = st.number_input(
+                "Min Salary ($)",
+                min_value=0,
+                value=0,
+                step=5000,
+                help="Minimum annual salary – 0 means no filter"
+            )
+        with col2:
+            city = st.selectbox(
+                "City",
+                options=city_options,
+                format_func=lambda x: "Any" if not x else x,
+                help="Filter by city"
+            )
+            remote_type = st.selectbox(
+                "Work Arrangement",
+                options=["", "remote", "hybrid", "remote_or_hybrid", "onsite"],
+                format_func=lambda x: {"": "Any", "remote_or_hybrid": "Remote or Hybrid"}.get(x, x.title()),
+                help="Filter by work arrangement"
+            )
+            posted_days = st.selectbox(
+                "Posted Within",
+                options=[0, 7, 14, 30, 60, 90],
+                format_func=lambda x: "All time" if x == 0 else f"Last {x} days",
+                index=3,
+                help="Only show jobs posted in this time window"
+            )
+            salary_max = st.number_input(
+                "Max Salary ($)",
+                min_value=0,
+                value=0,
+                step=5000,
+                help="Maximum annual salary – 0 means no filter"
+            )
+        
+        submitted = st.form_submit_button("Apply Filters")
+    
+    if not submitted:
+        st.info("Set your filters above and click **Apply Filters** to search.")
+        return
+    
+    # Build SQL with parameterized filters
+    conditions = []
+    params = {}
+    
+    if job_title and job_title.strip():
+        # Split into keywords: "Software" -> match "Software Developer", "Software Engineer", etc.
+        # "Software Engineer" -> match titles containing BOTH "Software" AND "Engineer"
+        # ILIKE with ESCAPE for literal % and _ (regex \Q\E caused "invalid escape" with params)
+        keywords = [k.strip() for k in job_title.strip().split() if k.strip()]
+        for i, kw in enumerate(keywords):
+            safe_kw = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            param_name = f"job_title_{i}"
+            conditions.append("title ILIKE '%' || :" + param_name + " || '%' ESCAPE '\\'")
+            params[param_name] = safe_kw
+    
+    if province:
+        conditions.append("province = :province")
+        params["province"] = province
+    
+    if city:
+        conditions.append("city = :city")
+        params["city"] = city
+    
+    if remote_type:
+        if remote_type == "remote_or_hybrid":
+            conditions.append("LOWER(COALESCE(remote_type, '')) IN ('remote', 'hybrid')")
+        else:
+            conditions.append("LOWER(COALESCE(remote_type, '')) = :remote_type")
+            params["remote_type"] = remote_type.lower()
+    
+    if salary_min and salary_min > 0:
+        conditions.append("COALESCE(salary_max, salary_mid) >= :salary_min")
+        params["salary_min"] = salary_min
+    
+    if salary_max and salary_max > 0:
+        conditions.append("COALESCE(salary_min, salary_mid) <= :salary_max")
+        params["salary_max"] = salary_max
+    
+    if posted_days > 0:
+        conditions.append(f"posted_date >= CURRENT_DATE - INTERVAL '{posted_days} days'")
+    
+    # Exclude jobs with bad salary ($8-$35 etc.)
+    conditions.append(SALARY_FILTER_RAW)
+    where_clause = " AND ".join(conditions)
+    
+    sql = f"""
+        SELECT title, company, city, province, source, posted_date, url,
+               salary_min, salary_max
+        FROM jobs_raw
+        WHERE {where_clause}
+        ORDER BY posted_date DESC
+        LIMIT 200
+    """
+    
+    with st.spinner("Searching..."):
+        try:
+            rows, col_names = run_query(db, sql, params=params if params else None, return_columns=True)
+        except Exception as e:
+            st.error(f"Query failed: {e}")
+            return
+    
+    if rows:
+        cols = col_names if col_names else [f"Col{i}" for i in range(len(rows[0]))]
+        df = pd.DataFrame(rows, columns=cols)
+        col_config = {}
+        for link_col in ["url", "URL"]:
+            if link_col in df.columns:
+                col_config[link_col] = st.column_config.LinkColumn(link_col)
+                break
+        if "salary_min" in df.columns and "salary_max" in df.columns:
+            col_config["salary_min"] = st.column_config.NumberColumn("Min Salary", format="$%d")
+            col_config["salary_max"] = st.column_config.NumberColumn("Max Salary", format="$%d")
+        st.success(f"Found {len(rows)} results")
+        st.dataframe(df, width="stretch", hide_index=True, column_config=col_config)
+        with st.expander("View SQL query"):
+            st.code(sql, language="sql")
+    else:
+        st.warning("No jobs match your filters. Try adjusting or removing some filters.")
+
+
+def _province_name(code: str) -> str:
+    """Map province code to full name."""
+    names = {"AB": "Alberta", "BC": "British Columbia", "MB": "Manitoba", "NB": "New Brunswick",
+             "NL": "Newfoundland", "NS": "Nova Scotia", "NT": "N.W.T.", "NU": "Nunavut",
+             "ON": "Ontario", "PE": "P.E.I.", "QC": "Quebec", "SK": "Saskatchewan", "YT": "Yukon"}
+    return names.get(code, code)
 
 
 def render_overview(db, days_option, date_where, date_where_jr):
@@ -238,12 +416,12 @@ def render_overview(db, days_option, date_where, date_where_jr):
     st.markdown("*Explore tech job opportunities across Canadian cities*")
     st.markdown("---")
     
-    # Overview metrics
+    # Overview metrics (exclude bad salary jobs)
     q_overview = f"""
         SELECT COUNT(*) as total, COUNT(jf.job_id) as with_features
         FROM jobs_raw jr
         LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id
-        WHERE {date_where_jr}
+        WHERE {date_where_jr} AND {SALARY_FILTER}
     """
     row = run_query(db, q_overview)[0]
     total, with_features = row[0], row[1]
@@ -252,7 +430,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
     q_sources = f"""
         SELECT source, COUNT(*) as cnt
         FROM jobs_raw
-        WHERE {date_where}
+        WHERE {date_where} AND {SALARY_FILTER_RAW}
         GROUP BY source ORDER BY cnt DESC
     """
     sources = run_query(db, q_sources)
@@ -297,7 +475,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
         q_cities = f"""
             SELECT city, province, COUNT(*) as cnt
             FROM jobs_raw
-            WHERE {date_where}
+            WHERE {date_where} AND {SALARY_FILTER_RAW}
             GROUP BY city, province
             ORDER BY cnt DESC LIMIT 12
         """
@@ -331,7 +509,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
         q_roles = f"""
             SELECT title, COUNT(*) as cnt
             FROM jobs_raw jr
-            WHERE {date_where_jr}
+            WHERE {date_where_jr} AND {SALARY_FILTER}
             GROUP BY title
             ORDER BY cnt DESC LIMIT 12
         """
@@ -364,7 +542,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
                 FROM jobs_raw jr
                 JOIN jobs_features jf ON jr.job_id = jf.job_id,
                      jsonb_array_elements_text(COALESCE(jf.skills,'[]'::jsonb)) skill
-                WHERE jr.posted_date >= CURRENT_DATE - INTERVAL '{days_option} days'
+                WHERE jr.posted_date >= CURRENT_DATE - INTERVAL '{days_option} days' AND {SALARY_FILTER}
                 GROUP BY sk ORDER BY cnt DESC LIMIT 12
             """
         else:
@@ -403,7 +581,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
         q_sal = f"""
             SELECT ROUND(AVG(salary_mid)) as avg_sal, COUNT(*) as n
             FROM jobs_raw
-            WHERE salary_mid IS NOT NULL AND salary_mid > 0 AND {date_where}
+            WHERE salary_mid IS NOT NULL AND salary_mid >= 10000 AND {date_where}
         """
         r = run_query(db, q_sal)[0]
         if r and r[1] > 0:
@@ -421,7 +599,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
             SELECT ROUND(100.0 * AVG(CASE WHEN COALESCE(jf.is_remote, false) OR jr.remote_type IN ('remote','hybrid') THEN 1 ELSE 0 END), 1)
             FROM jobs_raw jr
             LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id
-            WHERE {date_where_jr}
+            WHERE {date_where_jr} AND {SALARY_FILTER}
         """
         r = run_query(db, q_remote)[0]
         if r and r[0] is not None:
@@ -451,7 +629,7 @@ def render_overview(db, days_option, date_where, date_where_jr):
                COUNT(*) as n
         FROM jobs_raw jr
         JOIN jobs_features jf ON jr.job_id = jf.job_id
-        WHERE (jf.exp_min IS NOT NULL OR jf.exp_max IS NOT NULL) AND {date_where_jr}
+        WHERE (jf.exp_min IS NOT NULL OR jf.exp_max IS NOT NULL) AND {date_where_jr} AND {SALARY_FILTER}
         GROUP BY jr.city, jr.title
         HAVING COUNT(*) >= 3
         ORDER BY junior_pct DESC, avg_exp ASC
@@ -484,19 +662,22 @@ def main():
     date_where_jr = f"jr.posted_date >= CURRENT_DATE - INTERVAL '{days_option} days'" if days_option > 0 else "1=1"
     
     st.sidebar.markdown("---")
-    st.sidebar.caption("AI search: Ollama (default) or LLM_PROVIDER=openai")
+    st.sidebar.caption("AI search: OLLAMA_API_KEY (cloud) or LLM_PROVIDER=openai")
     
     # Tabs
-    tab1, tab2 = st.tabs(["📊 Overview", "🤖 Ask AI"])
+    tab1, tab2, tab3 = st.tabs(["📊 Overview", "🔍 Filter Search", "🤖 Ask AI"])
     
     with tab1:
         render_overview(db, days_option, date_where, date_where_jr)
     
     with tab2:
+        render_filter_search(db)
+    
+    with tab3:
         render_ask(db)
     
     st.markdown("---")
-    st.caption("Canada Tech Job Compass • Ask in natural language; AI generates and validates queries • Refresh: `python run.py process`")
+    st.caption("Canada Tech Job Compass • Filter search + AI natural language • Refresh: `python run.py process`")
 
 
 if __name__ == "__main__":

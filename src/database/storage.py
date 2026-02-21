@@ -2,7 +2,7 @@
 Storage layer - Database operations for job data.
 """
 
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -160,6 +160,42 @@ class JobStorage:
         
         return inserted
     
+    def update_job_description_and_salary(
+        self,
+        job_id: str,
+        description: str,
+        salary_min: Optional[int] = None,
+        salary_max: Optional[int] = None
+    ) -> bool:
+        """
+        Update job description and/or salary (for re-crawl fixes).
+        
+        Args:
+            job_id: Job ID (e.g. jobbank_12345)
+            description: Full job description text
+            salary_min: Optional new min salary
+            salary_max: Optional new max salary
+            
+        Returns:
+            True if updated, False if job not found or error
+        """
+        try:
+            with self.db.get_session() as session:
+                job = session.query(JobRaw).filter_by(job_id=job_id).first()
+                if not job:
+                    return False
+                if description:
+                    job.description = description
+                if salary_min is not None:
+                    job.salary_min = salary_min
+                if salary_max is not None:
+                    job.salary_max = salary_max
+                session.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"Failed to update job {job_id}: {e}")
+            return False
+
     def get_existing_job_ids(self, source: str = None) -> Set[str]:
         """
         Get set of job IDs already in database.

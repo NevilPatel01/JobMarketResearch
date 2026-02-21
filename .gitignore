@@ -59,9 +59,6 @@ __cache__/
 *.sqlite
 *.sqlite3
 
-# Documentation (as per user request)
-docs/
-
 # Data files (keep data/ for optional backups/exports)
 data/
 *.json

@@ -5,6 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Profile Views](https://komarev.com/ghpvc/?username=NevilPatel01&color=blueviolet&style=flat-square)](https://github.com/NevilPatel01)
 
 ---
 
@@ -197,7 +198,11 @@ pip install streamlit plotly
 streamlit run streamlit_app.py
 ```
 
-Opens a browser with charts and **AI-powered search** – ask in natural language (e.g. "Data Analyst jobs in Toronto"). Uses Ollama by default; set `LLM_PROVIDER=openai` for OpenAI.
+Opens a browser with charts and **AI-powered search** – ask in natural language (e.g. "Data Analyst jobs in Toronto"). Uses Ollama Cloud (set `OLLAMA_API_KEY`) or OpenAI (`LLM_PROVIDER=openai`).
+
+![Canada Tech Job Compass Dashboard](DataAnalysis.png)
+
+*Overview tab: jobs by source, top cities, roles, skills, and key metrics.*
 
 ### Collect Jobs (CLI)
 
@@ -210,6 +215,10 @@ python collect_multi_source.py --sources jobbank adzuna
 
 # Process raw jobs (validate, dedupe, extract features)
 python run.py process
+
+# Fix bad salary data: re-crawl Job Bank detail pages, store full descriptions
+python recrawl_bad_salary.py
+python recrawl_bad_salary.py --limit 50 --dry-run  # Preview first
 
 # Terminal analysis (or use Streamlit dashboard)
 python run.py analyze --days 90
@@ -325,7 +334,7 @@ flowchart LR
 - **Overview tab** – Charts for jobs by source, cities, roles, skills, salary, experience ladder
 - **Ask AI tab** – Natural language queries (e.g. "Find me Data Analyst jobs in Toronto"). LLM converts to SQL, a validation agent checks it matches your intent, then results are shown.
 
-**Plug-and-play LLM**: Default is **Ollama** (local) – run `ollama serve` and `ollama pull llama3.2`. Or set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` for OpenAI.
+**Plug-and-play LLM**: Default is **Ollama Cloud** – set `OLLAMA_API_KEY` (get at [ollama.com/settings/keys](https://ollama.com/settings/keys)). Or use local Ollama (`ollama serve`) or `LLM_PROVIDER=openai` with `OPENAI_API_KEY`.
 
 ---
 
@@ -465,7 +474,7 @@ Comprehensive guides available in [`docs/`](docs/):
 - ✅ Personal data stripped from job descriptions
 - ✅ Supabase Row Level Security (RLS) enabled
 
-**Report security issues**: Please email security@example.com
+**Report security issues**: Please email contact@nevilpatel.com
 
 ---
 

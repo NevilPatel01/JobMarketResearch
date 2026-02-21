@@ -244,32 +244,42 @@ class RapidAPICollector(BaseCollector):
         
         return city, province
     
+    MIN_ANNUAL_SALARY = 10000
+    HOURS_PER_YEAR = 2080
+
     def _parse_salary(self, salary_text: str) -> Tuple[Optional[int], Optional[int]]:
         """
-        Parse salary range from text.
+        Parse salary range from text. Handles hourly→annual. Rejects values < 10k.
         
-        Args:
-            salary_text: Salary text
-            
         Returns:
-            Tuple of (min_salary, max_salary)
+            Tuple of (min_salary, max_salary) - annual CAD
         """
         if not salary_text:
             return None, None
         
-        # Remove formatting
-        cleaned = salary_text.replace(',', '').replace('$', '').replace(' ', '')
+        text_lower = salary_text.lower()
+        is_hourly = any(x in text_lower for x in ['hourly', 'per hour', '/hr', '/ hour'])
         
-        # Try to find numbers
-        numbers = re.findall(r'\d+', cleaned)
+        cleaned = salary_text.replace(',', '').replace('$', '').replace(' ', '')
+        numbers = re.findall(r'[\d.]+', cleaned)
         
         if len(numbers) >= 2:
-            return int(numbers[0]), int(numbers[1])
+            v1, v2 = float(numbers[0]), float(numbers[1])
+            v1, v2 = min(v1, v2), max(v1, v2)
         elif len(numbers) == 1:
-            value = int(numbers[0])
-            return value, value
+            v1 = v2 = float(numbers[0])
+        else:
+            return None, None
         
-        return None, None
+        if is_hourly:
+            v1, v2 = int(v1 * self.HOURS_PER_YEAR), int(v2 * self.HOURS_PER_YEAR)
+        else:
+            v1, v2 = int(v1), int(v2)
+        
+        v1, v2 = min(v1, v2), max(v1, v2)
+        if v2 < self.MIN_ANNUAL_SALARY and not is_hourly:
+            return None, None
+        return v1, v2
     
     def _parse_date(self, date_str: Optional[str]) -> str:
         """

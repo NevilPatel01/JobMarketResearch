@@ -1,7 +1,7 @@
 """
 AI-powered natural language to SQL with validation agent.
 
-Plug-and-play LLM: use Ollama (local) or OpenAI via LLM_PROVIDER.
+Plug-and-play LLM: use Ollama Cloud (OLLAMA_API_KEY), local Ollama, or OpenAI via LLM_PROVIDER.
 User asks e.g. "Find me Data Analyst jobs in Toronto"
 -> LLM generates SQL
 -> Validation agent checks if SQL matches intent
@@ -26,6 +26,7 @@ jobs_features (jf) - optional JOIN on jr.job_id = jf.job_id:
   jf.exp_min, jf.exp_max, jf.exp_level, jf.skills (JSONB), jf.is_remote, jf.is_junior
 
 COLUMN RULES:
+- ALWAYS exclude bad salary: AND ((jr.salary_min IS NULL AND jr.salary_max IS NULL) OR COALESCE(jr.salary_max, jr.salary_mid) >= 10000)
 - Title/role search: jr.title ILIKE '%keyword%'
 - City search: jr.city ILIKE '%city%'  
 - Company: jr.company ILIKE '%company%'

@@ -138,32 +138,41 @@ class JobValidator:
         
         return False
     
+    # Minimum plausible annual salary - filter out $8-$35 style hourly misparsed as annual
+    MIN_ANNUAL_SALARY = 10000
+
     def _is_valid_salary_range(self, min_sal: Optional[int], max_sal: Optional[int]) -> bool:
-        """Check if salary range is logical."""
+        """Check if salary range is logical (annual CAD)."""
         # Null salaries are OK
         if min_sal is None and max_sal is None:
             return True
         
-        # If only one is set, it should be reasonable (CAD hourly or annual)
-        # Hourly: $10-$200/hour => Annual: $20k-$400k
+        # If only one is set, it should be reasonable
         if min_sal is not None and max_sal is None:
+            if min_sal < self.MIN_ANNUAL_SALARY:
+                return False  # Reject $8, $35 etc.
             return 0 <= min_sal <= 500000
         
         if min_sal is None and max_sal is not None:
+            if max_sal < self.MIN_ANNUAL_SALARY:
+                return False
             return 0 <= max_sal <= 500000
         
         # Both set - check range
         if min_sal > max_sal:
             return False
         
-        # Check reasonable bounds (CAD: $0-$500k annual, or $0-$250 hourly)
+        # Reject suspiciously low (hourly misparsed as annual)
+        if max_sal < self.MIN_ANNUAL_SALARY:
+            return False
+        
         if not (0 <= min_sal <= 500000):
             return False
         
         if not (0 <= max_sal <= 500000):
             return False
         
-        # Check range not too wide (max 100x difference for hourly rates)
+        # Check range not too wide (max 100x difference)
         if min_sal > 0 and max_sal > min_sal * 100:
             return False
         

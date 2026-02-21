@@ -231,6 +231,69 @@ class JobBankCollector(BaseCollector):
             self.logger.debug(f"Failed to parse job article: {e}")
             return None
     
+    def fetch_job_detail(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch full job detail page and parse description + salary.
+        Used for re-crawling jobs with bad salary data.
+        
+        Args:
+            url: Job Bank job posting URL (e.g. jobbank.gc.ca/jobsearch/jobposting/12345)
+            
+        Returns:
+            Dict with description (full text), salary_min, salary_max; or None if failed
+        """
+        if 'jobbank.gc.ca' not in url:
+            self.logger.warning(f"Not a Job Bank URL: {url}")
+            return None
+        
+        html = self._fetch_page(url)
+        if not html:
+            return None
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        result = {'description': '', 'salary_min': None, 'salary_max': None}
+        
+        # Job Bank detail: description often in div#job-description or similar
+        for sel in ['div#job-description', 'div.job-posting-detail', 'section[aria-label="Job details"]', 
+                    'div[property="description"]', 'div.details']:
+            desc_el = soup.select_one(sel)
+            if desc_el:
+                # Get text, strip HTML
+                text = desc_el.get_text(separator='\n', strip=True)
+                if len(text) > 100:
+                    result['description'] = text
+                    break
+        
+        # Fallback: look for any long text block
+        if not result['description']:
+            for div in soup.find_all('div', class_=lambda c: c and 'detail' in str(c).lower()):
+                text = div.get_text(separator='\n', strip=True)
+                if len(text) > 200:
+                    result['description'] = text
+                    break
+        
+        # Salary: look for "Salary" or "Wage" section
+        salary_text = ''
+        for label in ['Salary', 'Wage', 'Compensation', 'Pay']:
+            el = soup.find(string=re.compile(label, re.I))
+            if el:
+                parent = el.parent
+                for _ in range(5):
+                    if parent:
+                        salary_text = parent.get_text(strip=True)
+                        if '$' in salary_text and len(salary_text) < 500:
+                            break
+                        parent = parent.parent
+                    else:
+                        break
+                if '$' in salary_text:
+                    break
+        
+        if salary_text:
+            result['salary_min'], result['salary_max'] = self._parse_salary(salary_text)
+        
+        return result
+
     def _extract_job_id_from_path(self, path: str) -> str:
         """Extract job ID from URL path."""
         # Extract numeric ID or generate hash from path
@@ -282,40 +345,61 @@ class JobBankCollector(BaseCollector):
         
         return city, province
     
+    # Minimum plausible annual salary (CAD) - filter out hourly rates misparsed as annual
+    MIN_ANNUAL_SALARY = 10000
+    HOURS_PER_YEAR = 2080  # 40 * 52
+
     def _parse_salary(self, salary_text: str) -> Tuple[Optional[int], Optional[int]]:
         """
-        Parse salary range from text.
+        Parse salary range from text. Handles hourly→annual conversion.
+        Rejects values < MIN_ANNUAL_SALARY when not explicitly hourly.
         
         Args:
-            salary_text: Salary text (e.g., "$60,000 to $80,000")
+            salary_text: Salary text (e.g., "$60,000 to $80,000" or "$25 hourly")
             
         Returns:
-            Tuple of (min_salary, max_salary) - always min <= max
+            Tuple of (min_salary, max_salary) - always min <= max, or (None, None)
         """
         if not salary_text or 'not' in salary_text.lower():
             return None, None
         
-        # Remove formatting
+        text_lower = salary_text.lower()
+        is_hourly = any(x in text_lower for x in ['hourly', 'per hour', '/hr', '/ hour'])
+        is_biweekly = 'biweekly' in text_lower or 'bi-weekly' in text_lower
+        
+        # Remove formatting but keep decimal for hourly (e.g. $25.50)
         cleaned = salary_text.replace(',', '').replace('$', '').replace(' ', '')
         
-        # Try to find range: "60000to80000" or "60000-80000"
-        range_pattern = r'(\d+)(?:to|-|–)(\d+)'
+        # Try range: "60000to80000" or "60000-80000" or "25.50-35.00"
+        range_pattern = r'([\d.]+)(?:to|-|–)([\d.]+)'
         match = re.search(range_pattern, cleaned, re.IGNORECASE)
         
         if match:
-            v1, v2 = int(match.group(1)), int(match.group(2))
-            # Ensure min <= max (DB constraint) - swap if source has wrong order
-            return (min(v1, v2), max(v1, v2))
+            v1, v2 = float(match.group(1)), float(match.group(2))
+            v1, v2 = min(v1, v2), max(v1, v2)
+        else:
+            single_pattern = r'([\d.]+)'
+            match = re.search(single_pattern, cleaned)
+            if match:
+                v1 = v2 = float(match.group(1))
+            else:
+                return None, None
         
-        # Try single value
-        single_pattern = r'(\d+)'
-        match = re.search(single_pattern, cleaned)
+        # Convert to annual
+        if is_hourly:
+            v1, v2 = int(v1 * self.HOURS_PER_YEAR), int(v2 * self.HOURS_PER_YEAR)
+        elif is_biweekly:
+            v1, v2 = int(v1 * 26), int(v2 * 26)  # 26 pay periods/year
+        else:
+            v1, v2 = int(v1), int(v2)
         
-        if match:
-            value = int(match.group(1))
-            return value, value
+        v1, v2 = min(v1, v2), max(v1, v2)
         
-        return None, None
+        # Reject suspiciously low values (hourly misparsed as annual, e.g. $8-$35)
+        if v2 < self.MIN_ANNUAL_SALARY and not is_hourly:
+            return None, None
+        
+        return v1, v2
     
     def _parse_date(self, date_text: Optional[str]) -> str:
         """

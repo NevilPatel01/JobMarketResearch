@@ -32,7 +32,7 @@ def get_llm_backend(provider: str = None) -> LLMBackend:
     
     raise ValueError(
         f"Unknown LLM_PROVIDER={provider}. "
-        "Set LLM_PROVIDER=ollama (local) or LLM_PROVIDER=openai (requires OPENAI_API_KEY)."
+        "Set LLM_PROVIDER=ollama (OLLAMA_API_KEY for cloud) or LLM_PROVIDER=openai (OPENAI_API_KEY)."
     )
 
 
