@@ -72,13 +72,14 @@ ROLES = [
     'blockchain developer', 'automation engineer'
 ]
 
-def collect_comprehensive_dataset(max_pages=5, delay_between_searches=1):
+def collect_comprehensive_dataset(max_pages=5, delay_between_searches=1, early_exit_after=80):
     """
     Collect comprehensive dataset from Job Bank Canada.
     
     Args:
         max_pages: Maximum pages to scrape per city/role combination
         delay_between_searches: Delay in seconds between searches
+        early_exit_after: Stop after this many consecutive 0-insert batches (Job Bank pool exhausted)
     """
     logger.info("="*80)
     logger.info("COMPREHENSIVE JOB COLLECTION - TARGET: 5,000+ JOBS")
@@ -108,9 +109,13 @@ def collect_comprehensive_dataset(max_pages=5, delay_between_searches=1):
     total_collected = 0
     total_inserted = 0
     search_count = 0
+    consecutive_zero_inserts = 0
+    early_exit_triggered = False
     
     try:
         for city in CITIES:
+            if early_exit_triggered:
+                break
             for role in ROLES:
                 search_count += 1
                 
@@ -125,6 +130,16 @@ def collect_comprehensive_dataset(max_pages=5, delay_between_searches=1):
                         # Store jobs
                         inserted = storage.insert_raw_jobs(jobs, 'jobbank')
                         total_inserted += inserted
+                        
+                        # Track consecutive batches with no new jobs
+                        if inserted == 0:
+                            consecutive_zero_inserts += 1
+                            if consecutive_zero_inserts >= early_exit_after:
+                                logger.info(f"\n⚠️  Early exit: {consecutive_zero_inserts} consecutive batches with 0 new jobs (Job Bank pool exhausted)")
+                                early_exit_triggered = True
+                                break
+                        else:
+                            consecutive_zero_inserts = 0
                         
                         # Check if we've reached target
                         with db.get_session() as session:
@@ -143,6 +158,9 @@ def collect_comprehensive_dataset(max_pages=5, delay_between_searches=1):
                 except Exception as e:
                     logger.error(f"Failed to collect {role} in {city}: {e}")
                     continue
+            
+            if early_exit_triggered:
+                break
             
             # Check if target reached (break outer loop)
             with db.get_session() as session:
@@ -179,8 +197,13 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Collect comprehensive job dataset')
     parser.add_argument('--pages', type=int, default=5, help='Max pages per search (default: 5)')
-    parser.add_argument('--delay', type=float, default=1, help='Delay between searches in seconds (default: 1)')
+    parser.add_argument('--delay', type=float, default=0.5, help='Delay between searches in seconds (default: 0.5)')
+    parser.add_argument('--early-exit', type=int, default=80, help='Stop after N consecutive 0-insert batches (default: 80)')
     
     args = parser.parse_args()
     
-    collect_comprehensive_dataset(max_pages=args.pages, delay_between_searches=args.delay)
+    collect_comprehensive_dataset(
+        max_pages=args.pages,
+        delay_between_searches=args.delay,
+        early_exit_after=args.early_exit
+    )

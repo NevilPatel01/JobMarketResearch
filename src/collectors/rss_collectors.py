@@ -15,9 +15,17 @@ from utils import retry_on_exception, Config
 
 
 class IndeedRSSCollector(BaseCollector):
-    """Collect jobs from Indeed Canada RSS feeds."""
+    """Collect jobs from Indeed RSS feeds.
     
-    BASE_URL = "https://ca.indeed.com/rss"
+    Note: Indeed may limit or block RSS access. If feed fails,
+    consider using JSearch API (aggregates Indeed + others) instead.
+    """
+    
+    # Try multiple Indeed RSS endpoints
+    BASE_URLS = [
+        "https://rss.indeed.com/rss",
+        "https://ca.indeed.com/rss",
+    ]
     
     def __init__(self, config: Dict[str, Any] = None):
         """Initialize Indeed RSS collector."""
@@ -35,12 +43,19 @@ class IndeedRSSCollector(BaseCollector):
             url: RSS feed URL
             
         Returns:
-            Parsed feed or None if failed
+            Parsed feed or None if failed. Returns feed even if bozo (malformed)
+            if entries exist - we can still extract some jobs.
         """
         try:
-            feed = feedparser.parse(url)
-            if feed.bozo:  # Feed has parsing errors
+            # Use tolerant parsing - ignore some XML errors
+            feed = feedparser.parse(
+                url,
+                response_headers={'Content-Type': 'application/xml'},
+                sanitize_html=False
+            )
+            if feed.bozo and feed.bozo_exception:
                 self.logger.warning(f"RSS feed parsing issue: {feed.bozo_exception}")
+            # Return feed even if bozo - we may still have entries
             return feed
         except Exception as e:
             self.logger.error(f"Failed to fetch RSS feed: {e}")
@@ -60,11 +75,18 @@ class IndeedRSSCollector(BaseCollector):
         """
         self.logger.info(f"Fetching Indeed RSS: {role} in {city}")
         
-        # Build RSS URL
-        url = self._build_url(city, role)
+        # Try multiple URL formats (Indeed has changed RSS over time)
+        urls_to_try = [
+            self._build_url(city, role, base="https://rss.indeed.com/rss"),
+            self._build_url(city, role, base="https://ca.indeed.com/rss"),
+        ]
         
-        # Fetch feed
-        feed = self._fetch_feed(url)
+        feed = None
+        for url in urls_to_try:
+            feed = self._fetch_feed(url)
+            if feed and feed.entries:
+                break
+        
         if not feed or not feed.entries:
             self.logger.warning("Failed to fetch Indeed RSS feed or no entries found")
             return []
@@ -83,25 +105,32 @@ class IndeedRSSCollector(BaseCollector):
         self.logger.info(f"Collected {len(jobs)} jobs from Indeed RSS")
         return jobs
     
-    def _build_url(self, city: str, role: str) -> str:
+    def _build_url(self, city: str, role: str, base: str = None) -> str:
         """
         Build Indeed RSS URL.
         
         Args:
             city: City name
             role: Job role
+            base: Base URL (rss.indeed.com for US, ca.indeed.com for Canada)
             
         Returns:
             RSS feed URL
         """
+        base = base or self.BASE_URLS[0]
+        # Format: "City, Province" for Canadian locations
+        location = f"{city}, Canada"
         params = {
             'q': role,
-            'l': city,
+            'l': location,
             'fromage': '30',  # Last 30 days
-            'limit': '50'  # Max results per feed
+            'limit': '50',   # Max results per feed
         }
+        # rss.indeed.com uses co=ca for Canada
+        if 'rss.indeed.com' in base:
+            params['co'] = 'ca'
         query_string = urlencode(params)
-        return f"{self.BASE_URL}?{query_string}"
+        return f"{base}?{query_string}"
     
     def _parse_entry(self, entry: feedparser.FeedParserDict, city: str) -> Optional[Dict[str, Any]]:
         """
@@ -228,9 +257,17 @@ class WorkopolisRSSCollector(BaseCollector):
         max_attempts=Config.MAX_RETRIES
     )
     def _fetch_feed(self, url: str) -> Optional[feedparser.FeedParserDict]:
-        """Fetch and parse RSS feed."""
+        """Fetch and parse RSS feed. Use Accept header to request XML."""
         try:
-            feed = feedparser.parse(url)
+            import requests
+            headers = {'User-Agent': Config.USER_AGENT, 'Accept': 'application/rss+xml, application/xml, text/xml'}
+            resp = requests.get(url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            ct = (resp.headers.get('Content-Type') or '').lower()
+            if 'text/html' in ct and 'xml' not in ct:
+                self.logger.warning("Workopolis returned HTML instead of RSS (feed may be deprecated)")
+                return None
+            feed = feedparser.parse(resp.content)
             if feed.bozo:
                 self.logger.warning(f"RSS feed parsing issue: {feed.bozo_exception}")
             return feed

@@ -45,6 +45,13 @@ class JobStorage:
         
         for job in jobs:
             try:
+                # Fix invalid salary (min > max violates DB constraint)
+                salary_min = job.get('salary_min')
+                salary_max = job.get('salary_max')
+                if salary_min is not None and salary_max is not None and salary_min > salary_max:
+                    salary_min, salary_max = salary_max, salary_min
+                    job = {**job, 'salary_min': salary_min, 'salary_max': salary_max}
+                
                 with self.db.get_session() as session:
                     # Check if job already exists
                     existing = session.query(JobRaw).filter_by(job_id=job['job_id']).first()

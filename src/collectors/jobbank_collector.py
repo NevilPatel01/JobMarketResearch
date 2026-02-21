@@ -290,7 +290,7 @@ class JobBankCollector(BaseCollector):
             salary_text: Salary text (e.g., "$60,000 to $80,000")
             
         Returns:
-            Tuple of (min_salary, max_salary)
+            Tuple of (min_salary, max_salary) - always min <= max
         """
         if not salary_text or 'not' in salary_text.lower():
             return None, None
@@ -303,7 +303,9 @@ class JobBankCollector(BaseCollector):
         match = re.search(range_pattern, cleaned, re.IGNORECASE)
         
         if match:
-            return int(match.group(1)), int(match.group(2))
+            v1, v2 = int(match.group(1)), int(match.group(2))
+            # Ensure min <= max (DB constraint) - swap if source has wrong order
+            return (min(v1, v2), max(v1, v2))
         
         # Try single value
         single_pattern = r'(\d+)'

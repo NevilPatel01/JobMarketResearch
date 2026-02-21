@@ -4,11 +4,35 @@ Loads environment variables and provides access to configuration settings.
 """
 
 import os
+import re
 from typing import Optional, List
+from urllib.parse import quote, unquote
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+def _derive_pooler_url(direct_url: str, region: str, *, use_session_port: bool = True) -> Optional[str]:
+    """
+    Derive Supabase pooler URL from direct connection URL.
+    Uses Session pooler (5432) by default - for persistent backends, supports prepared statements.
+    """
+    if not direct_url or 'pooler.supabase.com' in direct_url:
+        return None
+    match = re.search(r'://postgres:([^@]+)@db\.([a-z0-9]+)\.supabase\.co(?::\d+)?', direct_url)
+    if not match:
+        return None
+    password, project_ref = match.group(1), match.group(2)
+    password = unquote(password)
+    pass_encoded = quote(password, safe='')
+    user = f"postgres.{project_ref}"
+    host = f"aws-0-{region}.pooler.supabase.com"
+    port = 5432 if use_session_port else 6543
+    netloc = f"{user}:{pass_encoded}@{host}:{port}"
+    path = '/postgres' if '/postgres' in direct_url else ''
+    scheme = 'postgresql' if direct_url.startswith(('postgresql://', 'postgres://')) else 'postgresql'
+    return f"{scheme}://{netloc}{path}"
 
 
 class Config:
@@ -17,13 +41,40 @@ class Config:
     # Database Configuration
     SUPABASE_URL: str = os.getenv('SUPABASE_URL', '')
     SUPABASE_KEY: str = os.getenv('SUPABASE_KEY', '')
+    # Prefer pooler URL (more reliable for remote connections) - aws-0-region.pooler.supabase.com:6543
+    SUPABASE_DB_POOLER_URL: str = os.getenv('SUPABASE_DB_POOLER_URL', '')
     SUPABASE_DB_URL: str = os.getenv('SUPABASE_DB_URL', '')
+    # Set to 'true' when direct URL fails DNS; we then derive pooler from SUPABASE_DB_URL
+    USE_POOLER_FOR_DNS_FIX: bool = os.getenv('USE_POOLER_FOR_DNS_FIX', 'true').lower() == 'true'
+    # Region for derived pooler - set if you get "Tenant or user not found" (e.g. eu-west-1, ca-central-1)
+    SUPABASE_POOLER_REGION: str = os.getenv('SUPABASE_POOLER_REGION', 'us-east-1')
+
+    @classmethod
+    def get_db_url(cls) -> str:
+        """Return DB URL. Prefer explicit pooler (must use pooler.supabase.com); else derive if USE_POOLER_FOR_DNS_FIX; else direct."""
+        # Only use as pooler if it has pooler host - ignore when user pasted direct URL by mistake
+        if cls.SUPABASE_DB_POOLER_URL:
+            if 'pooler.supabase.com' in cls.SUPABASE_DB_POOLER_URL:
+                return cls.SUPABASE_DB_POOLER_URL
+            if 'db.' in cls.SUPABASE_DB_POOLER_URL and 'supabase.co' in cls.SUPABASE_DB_POOLER_URL:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "SUPABASE_DB_POOLER_URL looks like direct URL (db.xxx.supabase.co). "
+                    "Use pooler URL from Dashboard → Settings → Database → Connect → Session/Transaction pooler."
+                )
+        if cls.USE_POOLER_FOR_DNS_FIX and cls.SUPABASE_DB_URL:
+            derived = _derive_pooler_url(cls.SUPABASE_DB_URL, cls.SUPABASE_POOLER_REGION)
+            if derived:
+                return derived
+        return cls.SUPABASE_DB_URL or ''
     DB_POOL_SIZE: int = int(os.getenv('DB_POOL_SIZE', '5'))
     DB_MAX_OVERFLOW: int = int(os.getenv('DB_MAX_OVERFLOW', '10'))
     
     # API Keys
     RAPIDAPI_KEY: str = os.getenv('RAPIDAPI_KEY', '')
     RAPIDAPI_HOST: str = os.getenv('RAPIDAPI_HOST', 'linkedin-jobs.p.rapidapi.com')
+    ADZUNA_APP_ID: str = os.getenv('ADZUNA_APP_ID', '')
+    ADZUNA_APP_KEY: str = os.getenv('ADZUNA_APP_KEY', '')
     
     # Scraping Configuration
     JOBBANK_RATE_LIMIT_SECONDS: float = float(os.getenv('JOBBANK_RATE_LIMIT_SECONDS', '2.5'))
