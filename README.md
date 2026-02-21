@@ -5,7 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Profile Views](https://komarev.com/ghpvc/?username=NevilPatel01&color=blueviolet&style=flat-square)](https://github.com/NevilPatel01)
+[![Visitor](https://visitor-badge.laobi.icu/badge?page_id=NevilPatel01.JobMarket&color=blueviolet&style=flat-square)](https://github.com/NevilPatel01/JobMarket)
 
 ---
 
