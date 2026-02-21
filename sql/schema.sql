@@ -67,9 +67,13 @@ CREATE TABLE IF NOT EXISTS jobs_features (
     -- Skills (JSONB array of strings)
     skills JSONB DEFAULT '[]'::jsonb,
     
-    -- Computed flags
+    -- Computed flags (is_junior computed from exp_min/exp_max directly, not from exp_avg)
+    -- NULL experience data means we don't know, so default to FALSE (not junior)
     is_junior BOOLEAN GENERATED ALWAYS AS (
-        COALESCE(exp_avg, 3) <= 2
+        CASE 
+            WHEN exp_min IS NULL AND exp_max IS NULL THEN FALSE
+            ELSE (COALESCE(exp_min, 0) + COALESCE(exp_max, exp_min, 0)) / 2.0 <= 2
+        END
     ) STORED,
     is_remote BOOLEAN DEFAULT FALSE,
     
@@ -220,7 +224,7 @@ SELECT
     jf.is_junior,
     jf.is_remote,
     jf.extraction_confidence,
-    EXTRACT(EPOCH FROM (CURRENT_DATE - jr.posted_date)) / 86400 as days_since_posted
+    EXTRACT(EPOCH FROM (CURRENT_DATE::timestamp - jr.posted_date::timestamp)) / 86400 as days_since_posted
 FROM jobs_raw jr
 LEFT JOIN jobs_features jf ON jr.job_id = jf.job_id;
 
@@ -243,7 +247,7 @@ SELECT
     ROUND(AVG(jf.exp_max), 1) as avg_exp_max,
     ROUND(100.0 * AVG(jf.is_junior::int), 1) as junior_pct,
     ROUND(AVG(jr.salary_mid)) as avg_salary,
-    ROUND(100.0 * AVG(CASE WHEN jf.remote_type IN ('remote', 'hybrid') THEN 1 ELSE 0 END), 1) as remote_pct,
+    ROUND(100.0 * AVG(CASE WHEN jr.remote_type IN ('remote', 'hybrid') THEN 1 ELSE 0 END), 1) as remote_pct,
     MAX(jr.posted_date) as latest_posting,
     COUNT(DISTINCT jr.source) as sources_count
 FROM jobs_raw jr
