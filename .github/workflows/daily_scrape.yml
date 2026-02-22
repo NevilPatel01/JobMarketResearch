@@ -40,12 +40,13 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install streamlit plotly
+          python -m spacy download en_core_web_sm
 
       - name: Collect jobs
         run: |
           python collect_multi_source.py --sources jobbank adzuna remoteok --target 6000
         continue-on-error: true
 
-      - name: Process and extract features
+      - name: ETL - process jobs (validate, dedupe, extract features, refresh views)
         run: |
           python run.py process

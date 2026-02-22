@@ -164,6 +164,17 @@ def process(limit):
     inserted = storage.insert_features(features)
     logger.info(f"✓ Inserted {inserted} feature records")
     
+    # Step 5: Refresh materialized view (for dashboards / Power BI)
+    logger.info("\n🔄 Refreshing materialized view (mv_powerbi_export)...")
+    try:
+        from sqlalchemy import text
+        with db.get_session() as session:
+            session.execute(text("REFRESH MATERIALIZED VIEW mv_powerbi_export"))
+            session.commit()
+        logger.info("✓ Materialized view refreshed")
+    except Exception as e:
+        logger.warning(f"Could not refresh materialized view (may not exist): {e}")
+    
     # Show stats
     counts = storage.get_table_counts()
     logger.info(f"\nDatabase stats:")
