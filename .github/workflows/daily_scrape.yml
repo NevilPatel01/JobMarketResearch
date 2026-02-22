@@ -26,6 +26,8 @@ jobs:
 
       - name: Collect jobs
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_DB_POOLER_URL: ${{ secrets.SUPABASE_DB_POOLER_URL }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
@@ -38,6 +40,8 @@ jobs:
 
       - name: Process and extract features
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_DB_POOLER_URL: ${{ secrets.SUPABASE_DB_POOLER_URL }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |

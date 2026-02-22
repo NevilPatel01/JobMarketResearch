@@ -416,7 +416,7 @@ GitHub Actions workflow (`.github/workflows/daily_scrape.yml`) runs daily at 7 A
 2. Processes raw jobs (extract features)
 3. Refreshes materialized view
 
-**Secrets to add** (Repo → Settings → Secrets): `SUPABASE_DB_POOLER_URL`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. Optional: `RAPIDAPI_KEY` for JSearch/LinkedIn.
+**Secrets to add** (Repo → Settings → Secrets): `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_DB_URL`, `SUPABASE_DB_POOLER_URL`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. Optional: `RAPIDAPI_KEY` for JSearch/LinkedIn.
 
 ### Local Scheduling
 
